@@ -1,0 +1,19 @@
+The yaffs2utils is the collection of utilities to make/extract a YAFFS2/YAFFS1
+image for Linux.
+
+Currently, it inclueds the following tools:
+(1) mkyaffs2: making a yaffs2 (yaffs1) image 
+(2) unyaffs2: extract a yaffs2 image made by mkyaffs2.
+
+This project is developed under the Debian Linux 5 (code Lenny). It can make a 
+yaffs2 image to be ran under my embedded system (Linux 2.6.20), and extract a 
+yaffs2 image made by itself. 
+
+Making a yaffs1 image to be ran properly is NOT verified since I don't have an 
+embedded system device with the old NAND flash (512k page). I will be glad if 
+someone can help me to verify the integrity to make a yaffs1 image.
+
+
+=============
+Luen-Yung Lin
+<penguin.lin@gmail.com>
