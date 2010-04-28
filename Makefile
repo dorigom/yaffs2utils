@@ -22,7 +22,7 @@
 
 # change or override with your kernel and yaffs2 source
 KERNELDIR	=
-YAFFS2DIR	= ../yaffs2
+YAFFS2DIR	= /archive/projects/yaffs2
 
 ## cross-compiler?
 CROSS 		= 

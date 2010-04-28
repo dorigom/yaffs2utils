@@ -167,7 +167,7 @@ object_list_search (object_item_t *object)
 /*-------------------------------------------------------------------------*/
 
 static void
-yaffs1_tags_endian_transform (yaffs_PackedTags1 *pt)
+packedtags1_endian_transform (yaffs_PackedTags1 *pt)
 {
 	yaffs_TagsUnion *tags = (yaffs_TagsUnion *)pt; // Work in bytes.
 	yaffs_TagsUnion temp;
@@ -204,7 +204,7 @@ yaffs1_tags_endian_transform (yaffs_PackedTags1 *pt)
 }
 
 static void 
-yaffs1_calculate_tags_ecc (yaffs_PackedTags1 *pt)
+packedtags1_ecc_calculate (yaffs_PackedTags1 *pt)
 {
 	/* Calculate an ecc */
 
@@ -386,14 +386,15 @@ yaffs1_write_chunk (unsigned char *data,
 	et.objectId = object_id;
 	et.chunkDeleted = 0;
 
+	memset(&pt, 0xff, sizeof(yaffs_PackedTags1));
 	yaffs_PackTags1(&pt, &et);
 
 	if (yaffs2_convert_endian) {
-		yaffs1_tags_endian_transform(&pt);
+		packedtags1_endian_transform(&pt);
 	}
 
 #ifndef YAFFS_IGNORE_TAGS_ECC
-	yaffs1_calculate_tags_ecc(&pt);
+	packedtags1_ecc_calculate(&pt);
 #endif
 
 	memset(spare, 0xff, yaffs2_spare_size);
@@ -453,6 +454,7 @@ yaffs2_write_chunk (unsigned char *data,
 	et.chunkUsed = 1;
 	et.sequenceNumber = YAFFS_LOWEST_SEQUENCE_NUMBER;
 
+	memset(&pt, 0xff, sizeof(yaffs_PackedTags2));
 	yaffs_PackTags2TagsPart(&pt.t, &et);
 
 	if (yaffs2_convert_endian) {
