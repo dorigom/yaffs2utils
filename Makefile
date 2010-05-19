@@ -20,8 +20,7 @@
 #
 ################################################################################
 
-# change or override with your kernel and yaffs2 source
-KERNELDIR	=
+# change or override with your yaffs2 source
 YAFFS2DIR	= /archive/projects/yaffs2
 
 ## cross-compiler?
@@ -35,7 +34,6 @@ all: src
 
 src:
 	CC="$(CC)" \
-	KERNELDIR="$(shell readlink -f "${KERNELDIR}")" \
 	YAFFS2DIR="$(shell readlink -f "${YAFFS2DIR}")" \
 	$(MAKE) -C $(SRCROOT)
 

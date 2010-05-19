@@ -1,0 +1,52 @@
+2010-05-18	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.0
+----------------
+
+	* mkyaffs2
+	- Fix only "little to big" endian transform about the endian transform
+	  for the mkyaffs2 to make a yaffs1 image. Now the mkyaffs2 can convert
+	  endian correctly to the endian differed from the local machine.
+	- Fix possible issues in tags2spare (writting tags to spare buffer).
+	- Fix possible memory leakage when error occurred in mkyaffs2.
+	- Fix possibe issue when using realloc().
+	- Fix typo issues.
+	- Using a global working buffer to parse the directroy in the mkyaffs2
+	  instead of the local buffer allocatation during writting chunks.
+	- Enhance the mkyaffs2 to write the whole "chunk + spare" at one time
+	  instead of "storing the chunk first then writing the spare" during
+	  making the images.
+
+	* unyaffs2
+	- Fix possible memory leakage when error occurred in the unyaffs2.
+	- Fix possible issue in spare2tags (extracing spare buffer to tags).
+	- Fix possibe issue when using realloc().
+	- Fix typo issues.
+	- Add the supports about the endian transform for the unyaffs2 to
+	  extract both the yaffs2/yaffs1 images made from the mkyaffs2. Now the
+	  unyaffs2 can extract a image, which is made by the mkyaffs2 with the
+	  option "-e" (different endian from the local machine).
+
+	* others
+	- Move endian depended codes out to "yaffs2utils_endian.c".
+	- Fix unsuitable implementation about endian transform for yaffs1 tags.
+	- Update "README".
+	- Add the file "CHANGELOG" to record the change logs.
+	- Remove macro "KERNELDIR" in the Makefile.
+
+
+2010-04-28	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.0.1
+-------------
+
+	* mkyaffs2
+	- Fix possible uninitialized yaffs tags.
+
+
+2010-04-22	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.0.1
+-------------
+
+	* Initial import.

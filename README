@@ -1,17 +1,58 @@
+yaffs2utils
+-----------
 The yaffs2utils is the collection of utilities to make/extract a YAFFS2/YAFFS1
 image for Linux.
 
 Currently, it inclueds the following tools:
 (1) mkyaffs2: making a yaffs2 (yaffs1) image 
-(2) unyaffs2: extract a yaffs2 image made by mkyaffs2.
+(2) unyaffs2: extract a yaffs2 (yaffs1) image made by mkyaffs2.
 
-This project is developed under the Debian Linux 5 (code Lenny). It can make a 
-yaffs2 image to be ran under my embedded system (Linux 2.6.20), and extract a 
+This project is developed under the Debian Linux 5 (code Lenny). It can make a
+yaffs2 image to be ran under my embedded system (Linux 2.6.20), and extract a
 yaffs2 image made by itself. 
 
-Making a yaffs1 image to be ran properly is NOT verified since I don't have an 
-embedded system device with the old NAND flash (512k page). I will be glad if 
-someone can help me to verify the integrity to make a yaffs1 image.
+Due to some lack of the official utilities from yaffs2.net (A image made from
+its "mkyaffs2image" tool cannot be ran normally under my embedded system because
+of the wrong OOB origination), I re-wrote it almost and create the "mkyaffs2"
+tool to make a yaffs2 image for Linux 2.6.20. A tool named "unyaffs2" is also
+provided to extract the image made from its "mkyaffs2". The license for this 
+package is stated as GPLv2 only.
+
+Making a yaffs1 image to be ran properly is NOT verified, since I don't have an
+embedded system device with the old NAND flash (512k page). I will be glad if
+someone can help me to verify the integrity to make and extract a yaffs1 image.
+
+
+HOWTO
+-----
+First, you have to download the yaffs2 source from the yaffs2.net.
+
+	http://yaffs.net/node/346
+
+The macro "YAFFS2DIR" in the Makefile in the top directory of the yaffs2utils
+also has to be modified to the path of yaffs2 source before you build this
+package. Finally, building the yaffs2utils by "make" and enjoying it.
+
+
+Usage
+-----
+* mkyaffs2
+
+	./mkyaffs2 [-h] [-e] [-p pagesize] dirname imgfile
+
+* unyaffs2
+
+	./unyaffs2 [-h] [-e] [-p pagesize] imgfile dirname
+
+After making a yaffs2 image, the tool "nandwrite" in the mtd-utils can be used
+ro recode data into the flash (with oob option), such as:
+
+	nandwrite -a -o /dev/mtd${MTDNUM} ${YAFFS2IMAGE}
+
+
+TODO
+----
+1. Verify the implementation for yaffs1 images.
 
 
 =============

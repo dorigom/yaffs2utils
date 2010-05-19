@@ -1,5 +1,5 @@
 /*
- * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image
+ * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image.
  * Copyright (C) 2010 Luen-Yung Lin <penguin.lin@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -21,15 +21,10 @@
  * Makes a YAFFS2 file system image that can be used to load up a file system.
  * Uses default Linux MTD layout - change if you need something different.
  *
- * This source is originally ported from the yaffs2 online cvs website
- * <http://www.aleph1.co.uk/cgi-bin/viewvc.cgi/yaffs2/>, and modified by
- * Luen-Yung Lin for yaffs2utils.
+ * This source is originally ported from the yaffs2 official cvs 
+ * <http://yaffs.net/node/346>, and modified by Luen-Yung Lin for yaffs2utils.
  *
  * Luen-Yung Lin <penguin.lin@gmail.com>
- */
-/*
- * TODO:
- * 1. Verify the code used for yaffs1
  */
  
 #include <stdio.h>
@@ -47,6 +42,7 @@
 
 #include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
+#include "yaffs2utils_endian.h"
 
 /*-------------------------------------------------------------------------*/
 
@@ -56,12 +52,6 @@ unsigned yaffs_traceMask = 0;
 
 #define DEFAULT_CHUNK_SIZE	2048
 #define DEFAULT_OBJECT_NUMBERS	65536
-#define ENDIAN_SWAP32(x)	((((x) & 0x000000FF) << 24) | \
-				(((x) & 0x0000FF00) << 8) | \
-				(((x) & 0x00FF0000) >> 8) | \
-				(((x) & 0xFF000000) >> 24))
-#define ENDIAN_SWAP16(x)	((((x) & 0x00FF) << 8) | \
-				(((x) & 0xFF00) >> 8))
 
 /*-------------------------------------------------------------------------*/
 
@@ -82,13 +72,15 @@ static object_item_t *yaffs2_object_list = 0;
 static unsigned yaffs2_current_objects = YAFFS_NOBJECT_BUCKETS;
 static unsigned yaffs2_total_objects = 0;
 static unsigned yaffs2_total_directories = 0;
-static unsigned  yaffs2_total_pages = 0;
+static unsigned yaffs2_total_pages = 0;
 
 static int yaffs2_outfd = -1;
 static int yaffs2_convert_endian = 0;
 
 static int (*oobfree_info)[2] = 0;
-static int (*write_chunk)(unsigned char *, unsigned, unsigned, unsigned) = NULL;
+static int (*write_chunk)(unsigned, unsigned, unsigned) = NULL;
+
+static unsigned char *yaffs2_data_buffer = NULL;
 
 /*-------------------------------------------------------------------------*/
 
@@ -111,9 +103,10 @@ object_list_compare (const void *a, const void * b)
 static int 
 object_list_add (object_item_t *object)
 {
-	/* realloc much memory to store the object list. */
+	/* realloc much memory to store the objects list. */
 	if (yaffs2_total_objects >= yaffs2_object_list_size) {
 		size_t newsize;
+		object_item_t *newlist;
 
 		if (yaffs2_object_list_size * 2 < YAFFS_UNUSED_OBJECT_ID) {
 			yaffs2_object_list_size *= 2;
@@ -122,20 +115,20 @@ object_list_add (object_item_t *object)
 			yaffs2_object_list_size = YAFFS_UNUSED_OBJECT_ID;
 		}
 		else {
-	                fprintf(stderr, "too much objects (max: %d)\n",
+	                fprintf(stderr, "too much objects (max: %u)\n",
 				YAFFS_UNUSED_OBJECT_ID);
 			return -1;
 		}
 
 		newsize = sizeof(object_item_t) * yaffs2_object_list_size;
-		yaffs2_object_list = realloc(yaffs2_object_list, newsize);
-		if (yaffs2_object_list == NULL) {
-			fprintf(stderr, "cannot allocate memory for objects ");
-			fprintf(stderr, "(%d objects array, %d bytes)\n",
+		newlist = realloc(yaffs2_object_list, newsize);
+		if (newlist == NULL) {
+			fprintf(stderr, "cannot allocate objects list ");
+			fprintf(stderr, "(%u objects, %u bytes)\n",
 				yaffs2_object_list_size, newsize);
-			free(yaffs2_object_list);
 			return -1;
 		}
+		yaffs2_object_list = newlist;
 	}
 
 	/* add the object */
@@ -166,73 +159,46 @@ object_list_search (object_item_t *object)
 
 /*-------------------------------------------------------------------------*/
 
-static void
-packedtags1_endian_transform (yaffs_PackedTags1 *pt)
-{
-	yaffs_TagsUnion *tags = (yaffs_TagsUnion *)pt; // Work in bytes.
-	yaffs_TagsUnion temp;
-
-	memset(&temp, 0, sizeof(temp));
-	// Ick, I hate magic numbers.
-	temp.asBytes[0] = ((tags->asBytes[2] & 0x0F) << 4) |
-			  ((tags->asBytes[1] & 0xF0) >> 4);
-	temp.asBytes[1] = ((tags->asBytes[1] & 0x0F) << 4) |
-			  ((tags->asBytes[0] & 0xF0) >> 4);
-	temp.asBytes[2] = ((tags->asBytes[0] & 0x0F) << 4) |
-			  ((tags->asBytes[2] & 0x30) >> 2) |
-			  ((tags->asBytes[3] & 0xC0) >> 6);
-	temp.asBytes[3] = ((tags->asBytes[3] & 0x3F) << 2) |
-			  ((tags->asBytes[2] & 0xC0) >> 6);
-	temp.asBytes[4] = ((tags->asBytes[6] & 0x03) << 6) |
-			  ((tags->asBytes[5] & 0xFC) >> 2);
-	temp.asBytes[5] = ((tags->asBytes[5] & 0x03) << 6) |
-			  ((tags->asBytes[4] & 0xFC) >> 2);
-	temp.asBytes[6] = ((tags->asBytes[4] & 0x03) << 6) |
-			  (tags->asBytes[7] & 0x3F);
-	temp.asBytes[7] = (tags->asBytes[6] & 0xFC) |
-			  ((tags->asBytes[7] & 0xC0) >> 6);
-
-	// Now copy it back.
-	tags->asBytes[0] = temp.asBytes[0];
-	tags->asBytes[1] = temp.asBytes[1];
-	tags->asBytes[2] = temp.asBytes[2];
-	tags->asBytes[3] = temp.asBytes[3];
-	tags->asBytes[4] = temp.asBytes[4];
-	tags->asBytes[5] = temp.asBytes[5];
-	tags->asBytes[6] = temp.asBytes[6];
-	tags->asBytes[7] = temp.asBytes[7];
-}
-
 static void 
 packedtags1_ecc_calculate (yaffs_PackedTags1 *pt)
 {
-	/* Calculate an ecc */
-
-	unsigned char *b = ((yaffs_TagsUnion *) pt)->asBytes;
+	unsigned char *b = ((yaffs_TagsUnion *)pt)->asBytes;
 	unsigned i, j;
 	unsigned ecc = 0;
 	unsigned bit = 0;
 
 	/* clear the ecc field */
 	if (yaffs2_convert_endian) {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
 		b[6] &= 0xC0;
 		b[7] &= 0x03;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+		b[6] &= 0x03;
+		b[7] &= 0xC0;
+#endif
 	}
 	else {
 		pt->ecc = 0;
 	}
 
+	/* calculate ecc */
 	for (i = 0; i < 8; i++) {
-		for (j = 1; j & 0xff; j <<= 1) {
+		for (j = 1; j & 0xFF; j <<= 1) {
 			bit++;
 			if (b[i] & j)
 				ecc ^= bit;
 		}
 	}
 
+	/* write ecc back to tags */
 	if (yaffs2_convert_endian) {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
 		b[6] |= ((ecc >> 6) & 0x3F);
 		b[7] |= ((ecc & 0x3F) << 2);
+#elif defined(__BIG_ENDIAN_BITFIELD)
+		b[6] |= ((ecc & 0x3F) << 2);
+		b[7] |= ((ecc >> 6) & 0x3F);
+#endif
 	}
 	else {
 		pt->ecc = ecc;
@@ -241,103 +207,25 @@ packedtags1_ecc_calculate (yaffs_PackedTags1 *pt)
 
 /*-------------------------------------------------------------------------*/
 
-static void
-packedtags2_tagspart_endian_transform (yaffs_PackedTags2 *t)
-{
-	yaffs_PackedTags2TagsPart *tp = &t->t;
-
-	tp->sequenceNumber = ENDIAN_SWAP32(tp->sequenceNumber);
-	tp->objectId = ENDIAN_SWAP32(tp->objectId);
-	tp->chunkId = ENDIAN_SWAP32(tp->chunkId);
-	tp->byteCount = ENDIAN_SWAP32(tp->byteCount);	
-}
-
-static void 
-packedtags2_eccother_endian_transform (yaffs_PackedTags2 *t)
-{
-	yaffs_ECCOther *e = &t->ecc;
-
-	e->lineParity = ENDIAN_SWAP32(e->lineParity);
-	e->lineParityPrime = ENDIAN_SWAP32(e->lineParityPrime);
-}
-
-/*-------------------------------------------------------------------------*/
-
-static void 
-object_header_endian_transform (yaffs_ObjectHeader *oh)
-{
-	oh->type = ENDIAN_SWAP32(oh->type); // GCC makes enums 32 bits.
-	oh->parentObjectId = ENDIAN_SWAP32(oh->parentObjectId); // int
-	// __u16 - Not used, but done for completeness.
-	oh->sum__NoLongerUsed = ENDIAN_SWAP16(oh->sum__NoLongerUsed);
-	oh->yst_mode = ENDIAN_SWAP32(oh->yst_mode);
-
-	// Aiee. An int... signed, at that!
-	oh->fileSize = ENDIAN_SWAP32(oh->fileSize);
-	oh->equivalentObjectId = ENDIAN_SWAP32(oh->equivalentObjectId);
-	oh->yst_rdev = ENDIAN_SWAP32(oh->yst_rdev);
-
-#ifdef CONFIG_YAFFS_WINCE 
-	/* 
-	 * WinCE doesn't implement this, but we need to just in case. 
-	 * In fact, WinCE would be *THE* place where this would be an issue!
-	 */
-	oh->notForWinCE[0] = ENDIAN_SWAP32(oh->notForWinCE[0]);
-	oh->notForWinCE[1] = ENDIAN_SWAP32(oh->notForWinCE[1]);
-	oh->notForWinCE[2] = ENDIAN_SWAP32(oh->notForWinCE[2]);
-	oh->notForWinCE[3] = ENDIAN_SWAP32(oh->notForWinCE[3]);
-	oh->notForWinCE[4] = ENDIAN_SWAP32(oh->notForWinCE[4]);
-	
-	oh->win_ctime[0] = ENDIAN_SWAP32(oh->win_ctime[0]);
-	oh->win_ctime[1] = ENDIAN_SWAP32(oh->win_ctime[1]);
-	oh->win_atime[0] = ENDIAN_SWAP32(oh->win_atime[0]);
-	oh->win_atime[1] = ENDIAN_SWAP32(oh->win_atime[1]);
-	oh->win_mtime[0] = ENDIAN_SWAP32(oh->win_mtime[0]);
-	oh->win_mtime[1] = ENDIAN_SWAP32(oh->win_mtime[1]);
-	oh->roomToGrow[0] = ENDIAN_SWAP32(oh->roomToGrow[0]);
-	oh->roomToGrow[1] = ENDIAN_SWAP32(oh->roomToGrow[1]);
-	oh->roomToGrow[2] = ENDIAN_SWAP32(oh->roomToGrow[2]);
-	oh->roomToGrow[3] = ENDIAN_SWAP32(oh->roomToGrow[3]);
-	oh->roomToGrow[4] = ENDIAN_SWAP32(oh->roomToGrow[4]);
-	oh->roomToGrow[5] = ENDIAN_SWAP32(oh->roomToGrow[5]);
-#else
-	// Regular POSIX.
-	oh->yst_uid = ENDIAN_SWAP32(oh->yst_uid);
-	oh->yst_gid = ENDIAN_SWAP32(oh->yst_gid);
-	oh->yst_atime = ENDIAN_SWAP32(oh->yst_atime);
-	oh->yst_mtime = ENDIAN_SWAP32(oh->yst_mtime);
-	oh->yst_ctime = ENDIAN_SWAP32(oh->yst_ctime);
-
-	oh->roomToGrow[0] = ENDIAN_SWAP32(oh->roomToGrow[0]);
-	oh->roomToGrow[1] = ENDIAN_SWAP32(oh->roomToGrow[1]);
-	oh->roomToGrow[2] = ENDIAN_SWAP32(oh->roomToGrow[2]);
-	oh->roomToGrow[3] = ENDIAN_SWAP32(oh->roomToGrow[3]);
-	oh->roomToGrow[4] = ENDIAN_SWAP32(oh->roomToGrow[4]);
-	oh->roomToGrow[5] = ENDIAN_SWAP32(oh->roomToGrow[5]);
-
-	oh->inbandShadowsObject = ENDIAN_SWAP32(oh->inbandShadowsObject);
-	oh->inbandIsShrink = ENDIAN_SWAP32(oh->inbandIsShrink);
-	oh->reservedSpace[0] = ENDIAN_SWAP32(oh->reservedSpace[0]);
-	oh->reservedSpace[9] = ENDIAN_SWAP32(oh->reservedSpace[1]);
-	oh->shadowsObject = ENDIAN_SWAP32(oh->shadowsObject);
-	oh->isShrink = ENDIAN_SWAP32(oh->isShrink);
-#endif
-}
-
 static ssize_t
 tags2spare (unsigned char *spare, unsigned char *tags, size_t bytes)
 {
-	unsigned int i;
+	unsigned i;
 	size_t copied = 0;
 
 	for (i = 0; i < 8 && copied < bytes; i++) {
-		size_t size;
-		size = bytes > oobfree_info[i][1] ? oobfree_info[i][1] : bytes;
-		spare += oobfree_info[i][0];
-		memcpy(spare, tags, size);
-		if (memcmp(spare, tags, size)) {
+		size_t size = bytes - copied;
+		unsigned char *s = spare + oobfree_info[i][0];
+
+		if (size > oobfree_info[i][1]) {
+			size = oobfree_info[i][1];
+		}
+
+		memcpy(s, tags, size);
+		if (memcmp(s, tags, size)) {
 			return -1;
 		}
+
 		copied += size;
 		tags += size;
 	}
@@ -348,35 +236,17 @@ tags2spare (unsigned char *spare, unsigned char *tags, size_t bytes)
 /*-------------------------------------------------------------------------*/
 
 static int 
-yaffs1_write_chunk (unsigned char *data, 
-		    unsigned bytes, 
-		    unsigned object_id, 
+yaffs1_write_chunk (unsigned bytes,
+		    unsigned object_id,
 		    unsigned chunk_id)
 {
 	ssize_t written;
 	yaffs_ExtendedTags et;
 	yaffs_PackedTags1 pt;
-	unsigned char *spare;
+	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
+	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
 
-	spare = (unsigned char *)malloc(yaffs2_spare_size);
-	if (spare == NULL) {
-		return -1;
-	}
-
-	/* 
-	 * write a page
-	 */
-	written = safe_write(yaffs2_outfd, data, yaffs2_chunk_size);
-	if(written != yaffs2_chunk_size) {
-		free(spare);
-		return -1;
-	}
-
-	yaffs2_total_pages++;
-
-	/*
-	 * write a oob
-	 */
+	/* prepare the spare (oob) first */
 	yaffs_InitialiseTags(&et);
 	
 	et.chunkId = chunk_id;
@@ -384,66 +254,52 @@ yaffs1_write_chunk (unsigned char *data,
 	et.serialNumber = 1;	// double check
 	et.byteCount = bytes;
 	et.objectId = object_id;
-	et.chunkDeleted = 0;
+	et.chunkDeleted = 0;	// double check
 
-	memset(&pt, 0xff, sizeof(yaffs_PackedTags1));
+	memset(&pt, 0xFF, sizeof(yaffs_PackedTags1));
 	yaffs_PackTags1(&pt, &et);
 
 	if (yaffs2_convert_endian) {
-		packedtags1_endian_transform(&pt);
+		packedtags1_endian_transform(&pt, 0);
 	}
 
 #ifndef YAFFS_IGNORE_TAGS_ECC
 	packedtags1_ecc_calculate(&pt);
 #endif
 
-	memset(spare, 0xff, yaffs2_spare_size);
+	/* write the spare (oob) into the buffer */
+	memset(spare, 0xFF, yaffs2_spare_size);
 	written = tags2spare(spare, (unsigned char *)&pt,
-			     sizeof(yaffs_PackedTags1));
+			     sizeof(yaffs_PackedTags1) - sizeof(pt.shouldBeFF));
 	if (written != (sizeof(yaffs_PackedTags1) - sizeof(pt.shouldBeFF))) {
-		free(spare);
 		return -1;
 	}
 
-	written = safe_write(yaffs2_outfd, spare, yaffs2_spare_size);
-
-	free(spare);
-
-	return !(written == yaffs2_spare_size);
-}
-
-/*-------------------------------------------------------------------------*/
-
-static int 
-yaffs2_write_chunk (unsigned char *data, 
-		    unsigned bytes, 
-		    unsigned object_id, 
-		    unsigned chunk_id)
-{
-	ssize_t written;
-	yaffs_ExtendedTags et;
-	yaffs_PackedTags2 pt;
-	unsigned char *spare;
-
-	spare = (unsigned char *)malloc(yaffs2_spare_size);
-	if (spare == NULL) {
-		return -1;
-	}
-
-	/* 
-	 * write a page
-	 */
-	written = safe_write(yaffs2_outfd, data, yaffs2_chunk_size);
-	if(written != yaffs2_chunk_size) {
-		free(spare);
+	/* write a whole "chunk + spare" back to the image */
+	written = safe_write(yaffs2_outfd, yaffs2_data_buffer, bufsize);
+	if (written != bufsize) {
 		return -1;
 	}
 
 	yaffs2_total_pages++;
 
-	/*
-	 * write a oob
-	 */
+	return 0;
+}
+
+/*-------------------------------------------------------------------------*/
+
+static int
+yaffs2_write_chunk (unsigned bytes,
+		    unsigned object_id,
+		    unsigned chunk_id)
+{
+	ssize_t written;
+	yaffs_ExtendedTags et;
+	yaffs_PackedTags2 pt;
+	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
+	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
+
+	/* prepare the spare (oob) first */
 	yaffs_InitialiseTags(&et);
 	
 	et.chunkId = chunk_id;
@@ -454,7 +310,7 @@ yaffs2_write_chunk (unsigned char *data,
 	et.chunkUsed = 1;
 	et.sequenceNumber = YAFFS_LOWEST_SEQUENCE_NUMBER;
 
-	memset(&pt, 0xff, sizeof(yaffs_PackedTags2));
+	memset(&pt, 0xFF, sizeof(yaffs_PackedTags2));
 	yaffs_PackTags2TagsPart(&pt.t, &et);
 
 	if (yaffs2_convert_endian) {
@@ -470,78 +326,79 @@ yaffs2_write_chunk (unsigned char *data,
 	}
 #endif
 
-	memset(spare, 0xff, yaffs2_spare_size);
+	/* write the spare (oob) into the buffer */
+	memset(spare, 0xFF, yaffs2_spare_size);
 	written = tags2spare(spare, (unsigned char *)&pt,
 			     sizeof(yaffs_PackedTags2));
 	if (written != sizeof(yaffs_PackedTags2)) {
-		free(spare);
 		return -1;
 	}
 
-	written = safe_write(yaffs2_outfd, spare, yaffs2_spare_size);
+	/* write a whole "chunk + spare" back to the image */
+	written = safe_write(yaffs2_outfd, yaffs2_data_buffer, bufsize);
+	if (written != bufsize) {
+		return -1;
+	}
 
-	free(spare);
+	yaffs2_total_pages++;
 
-	return !(written == yaffs2_spare_size);
+	return 0;
 }
 
 /*-------------------------------------------------------------------------*/
 
 static int 
-write_object_header (const char *name, 
-		     struct stat *s, 
-		     yaffs_ObjectType type, 
-		     const char *alias, 
-		     unsigned object_id, 
-		     unsigned parent_id, 
+write_object_header (const char *name,
+		     struct stat *s,
+		     yaffs_ObjectType type,
+		     const char *alias,
+		     unsigned object_id,
+		     unsigned parent_id,
 		     unsigned equivalent_id)
 {
 	int retval;
-	unsigned char *buf;
+	yaffs_ObjectHeader oh;
 
-	buf = (unsigned char *)malloc(yaffs2_chunk_size);
-	if (buf == NULL) {
-		return -1;
-	}
+	memset(&oh, 0xFF, sizeof(yaffs_ObjectHeader));
 
-	yaffs_ObjectHeader *oh = (yaffs_ObjectHeader *)buf;
-	memset(buf, 0xff, yaffs2_chunk_size);
-
-	oh->type = type;
-	oh->parentObjectId = parent_id;
-	strncpy(oh->name, name, YAFFS_MAX_NAME_LENGTH);
+	oh.type = type;
+	oh.parentObjectId = parent_id;
+	strncpy(oh.name, name, YAFFS_MAX_NAME_LENGTH);
 	
 	if(type != YAFFS_OBJECT_TYPE_HARDLINK) {
-		oh->yst_mode = s->st_mode;
-		oh->yst_uid = s->st_uid;
-		oh->yst_gid = s->st_gid;
-		oh->yst_atime = s->st_atime;
-		oh->yst_mtime = s->st_mtime;
-		oh->yst_ctime = s->st_ctime;
-		oh->yst_rdev  = s->st_rdev;
+		oh.yst_mode = s->st_mode;
+		oh.yst_uid = s->st_uid;
+		oh.yst_gid = s->st_gid;
+		oh.yst_atime = s->st_atime;
+		oh.yst_mtime = s->st_mtime;
+		oh.yst_ctime = s->st_ctime;
+		oh.yst_rdev  = s->st_rdev;
 	}
 
 	switch (type) {
 	case YAFFS_OBJECT_TYPE_FILE:
-		oh->fileSize = s->st_size;
+		oh.fileSize = s->st_size;
 		break;
 	case YAFFS_OBJECT_TYPE_HARDLINK:
-		oh->equivalentObjectId = equivalent_id;
+		oh.equivalentObjectId = equivalent_id;
 		break;
 	case YAFFS_OBJECT_TYPE_SYMLINK:
-		strncpy(oh->alias, alias, YAFFS_MAX_ALIAS_LENGTH);
+		strncpy(oh.alias, alias, YAFFS_MAX_ALIAS_LENGTH);
 		break;
 	default:
 		break;
 	}
 
 	if (yaffs2_convert_endian) {
- 	   	object_header_endian_transform(oh);
+ 	   	object_header_endian_transform(&oh);
 	}
 
-	retval = write_chunk(buf, 0xffff, object_id, 0);
+	/* copy header into the buffer */
+	memset(yaffs2_data_buffer, 0xFF, yaffs2_chunk_size);
+	memcpy(yaffs2_data_buffer, &oh, sizeof(yaffs_ObjectHeader));
 
-	free(buf);
+	/* write buffer */
+	retval = write_chunk(0xFFFF, object_id, 0);
 
 	return retval;
 }
@@ -549,50 +406,42 @@ write_object_header (const char *name,
 /*-------------------------------------------------------------------------*/
 
 static int 
-parse_regular_file (const char *fpath, 
-		    struct dirent *dentry, 
-		    unsigned object_id, 
+parse_regular_file (const char *fpath,
+		    struct dirent *dentry,
+		    unsigned object_id,
 		    unsigned parent_id)
 {
 	int fd, retval = -1;
 	ssize_t bytes;
 	unsigned chunk = 0;
-	unsigned char *buf;
-
-	buf = (unsigned char *)malloc(yaffs2_chunk_size);
-	if (buf == NULL) {
-		fprintf(stderr, "cannot allocate memory for %s", fpath);
-		goto out;
-	}
+	unsigned char *datbuf = yaffs2_data_buffer;
 
 	fd = open(fpath, O_RDONLY);
 	if (fd < 0) {
 		fprintf(stderr, "cannot open the file: %s\n", fpath);
-		goto free_out;
+		return -1;
 	}
 
-	memset(buf, 0xff, yaffs2_chunk_size);
-	while((bytes = safe_read(fd, buf, yaffs2_chunk_size)) != 0) {
+	memset(datbuf, 0xFF, yaffs2_chunk_size);
+	while((bytes = safe_read(fd, datbuf, yaffs2_chunk_size)) != 0) {
 		if (bytes < 0) {
 			fprintf(stderr, "error while reading file %s\n", fpath);
 			retval = bytes;
-			goto close_out;
+			break;
 		}
 
-		retval = write_chunk(buf, bytes, object_id, ++chunk);
+		/* write buffer */
+		retval = write_chunk(bytes, object_id, ++chunk);
 		if (retval) {
 			fprintf(stderr, "error while writing file %s\n", fpath);
-			goto close_out;
+			break;
 		}
 
-		memset(buf, 0xff, yaffs2_chunk_size);
+		memset(datbuf, 0xFF, yaffs2_chunk_size);
 	}
 
-close_out:
 	close(fd);
-free_out:
-	free(buf);
-out:
+
 	return retval;
 }
 
@@ -622,11 +471,10 @@ parse_directory (unsigned parent, const char *path)
 
 		int retval = -1;	
  		char fpath[PATH_MAX];
-		unsigned obj;
 		struct stat s;
 		
 		sprintf(fpath, "%s/%s", path, dent->d_name);
-		if (lstat(fpath, &s) < 0 ) {
+		if (lstat(fpath, &s) < 0) {
 			fprintf(stderr, "cannot stat the file: %s\n", fpath);
 			continue;
 		}
@@ -639,35 +487,42 @@ parse_directory (unsigned parent, const char *path)
 		    S_ISFIFO(s.st_mode) ||
 		    S_ISSOCK(s.st_mode))
 		{
-			struct object_item o;
+			unsigned id;
+			struct object_item obj;
 			yaffs_ObjectType ftype;
 
-			obj = ++yaffs2_current_objects;
+			id = ++yaffs2_current_objects;
 			
-			printf("Object %d, %s is a ", obj, fpath);
+			printf("object %u, %s is a ", id, fpath);
 			
-			/* We're going to create an object for it */
-			o.dev = s.st_dev;
-			o.ino = s.st_ino;
-			o.obj = obj;
+			/* we're going to create an object for it */
+			obj.dev = s.st_dev;
+			obj.ino = s.st_ino;
+			obj.obj = id;
 
-			/* hard link */
-			if (!object_list_search(&o)) {
+			/* special case for hard link */
+			if (!object_list_search(&obj)) {
 			 	/* we need to make a hard link */
 				ftype = YAFFS_OBJECT_TYPE_HARDLINK;
-			 	printf("hard link to object %d\n", o.obj);
+			 	printf("hard link to object %u\n", obj.obj);
 				retval = write_object_header(dent->d_name, &s,
-							     ftype, NULL, obj,
-							     parent, o.obj);
+							     ftype, NULL, id,
+							     parent, obj.obj);
 				if (retval) {
-					goto error;
+					fprintf(stderr, "error while parsing ");
+					fprintf(stderr, "%s\n", fpath);
+					return -1;
 				}
 				continue;
 			}
 
-			retval = object_list_add(&o);
+			retval = object_list_add(&obj);
 			if (retval) {
-				goto error;
+				fprintf(stderr, "error while adding object ");
+				fprintf(stderr, "%u into the objects list\n",
+					id);
+				fprintf(stderr, "(%s)\n", fpath);
+				return -1;
 			}
 
 			if (S_ISLNK(s.st_mode)) {
@@ -676,66 +531,66 @@ parse_directory (unsigned parent, const char *path)
 				ftype = YAFFS_OBJECT_TYPE_SYMLINK;
 				memset(sympath, 0, sizeof(sympath));
 				readlink(fpath, sympath, sizeof(sympath) -1);
-				printf("symbolic link to \"%s\"\n", sympath);
+				printf("symbolic link to %s\n", sympath);
 				retval = write_object_header(dent->d_name, &s,
 							     ftype, sympath,
-							     obj, parent, -1);
+							     id, parent, -1);
 			}
 			else if (S_ISREG(s.st_mode)) {
 				printf("file\n");
 				ftype = YAFFS_OBJECT_TYPE_FILE;
 				retval = write_object_header(dent->d_name, &s,
-							     ftype, NULL, obj,
+							     ftype, NULL, id,
 							     parent, -1);
 				if (!retval) {
 					retval = parse_regular_file(fpath, dent,
-								    obj, parent);
+								    id, parent);
 				}
 			}
 			else if (S_ISSOCK(s.st_mode)) {
 				printf("socket\n");
 				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
 				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, obj,
+						    	     ftype, NULL, id,
 							     parent, -1);
 			}
 			else if (S_ISFIFO(s.st_mode)) {
 				printf("fifo\n");
 				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
 				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, obj,
+						    	     ftype, NULL, id,
 							     parent, -1);
 			}
 			else if (S_ISCHR(s.st_mode)) {
 				printf("character device\n");
 				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
 				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, obj,
+						    	     ftype, NULL, id,
 							     parent, -1);
 			}
 			else if (S_ISBLK(s.st_mode)) {
 				printf("block device\n");
 				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
 				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, obj,
+						    	     ftype, NULL, id,
 							     parent, -1);
 			}
 			else if (S_ISDIR(s.st_mode)) {
 				printf("directory\n");
 				ftype = YAFFS_OBJECT_TYPE_DIRECTORY; 
 				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, obj,
+						    	     ftype, NULL, id,
 							     parent, -1);
 				if (!retval) {
-					retval = parse_directory(obj, fpath);
+					retval = parse_directory(id, fpath);
 				}
 			}
 		}
 		else {
-			fprintf(stderr, "unsupport type for %s\n", fpath);
+			fprintf(stderr, "warning: unsupport type for %s\n",
+				fpath);
 		}
 
-error:
 		if (retval) {
 			fprintf(stderr, "error while parsing %s\n", fpath);
 			return -1;
@@ -752,18 +607,18 @@ show_usage (void)
 {
 	fprintf(stderr, "Usage: mkyaffs2 [-e] [-h] [-p pagesize] dirname outfile\n");
 	fprintf(stderr, "mkyaffs2: A simple utility to make the yaffs2 image\n");
-	fprintf(stderr, "Version: %s\n\n", YAFFS2PROGS_VERSION);
-	fprintf(stderr, "Options:\n");
+	fprintf(stderr, "version: %s\n\n", YAFFS2PROGS_VERSION);
+	fprintf(stderr, "options:\n");
 	fprintf(stderr, "	-h		display this help message and exit\n");
 	fprintf(stderr, "	-e		convert the endian differed from the local machine\n");
-	fprintf(stderr, "	-p pagesize	page size (512|2048, default: %d)\n", DEFAULT_CHUNK_SIZE);
+	fprintf(stderr, "	-p pagesize	page size (512|2048, default: %u)\n", DEFAULT_CHUNK_SIZE);
 	fprintf(stderr, "			512 bytes page size will format the yaffs1 image\n");
 }
 
 /*-------------------------------------------------------------------------*/
 
 int 
-main(int argc, char *argv[])
+main (int argc, char *argv[])
 {
 	int retval, objsize;
 	char *input_path, *output_path;
@@ -822,7 +677,7 @@ main(int argc, char *argv[])
 		oobfree_info = (int (*)[2])nand_oobfree_64;
 		break;
 	default:
-		fprintf(stderr, "%d bytes page size is not supported\n",
+		fprintf(stderr, "%u bytes page size is not supported\n",
 			yaffs2_chunk_size);
 		return -1;
 	}
@@ -842,17 +697,30 @@ main(int argc, char *argv[])
 	objsize = sizeof(object_item_t) * yaffs2_object_list_size;
 	yaffs2_object_list = (object_item_t *)malloc(objsize);
 	if (yaffs2_object_list == NULL) {
-		fprintf(stderr, "cannot allocate memory for objects array ");
-		fprintf(stderr, "(default: %d bytes)\n", 
-			sizeof(object_item_t) * yaffs2_object_list_size);
+		fprintf(stderr, "cannot allocate objects list ");
+		fprintf(stderr, "(default: %u objects, %u bytes)\n", 
+			yaffs2_object_list_size,
+			yaffs2_object_list_size * sizeof(object_item_t));
+		return -1;
+	}
+
+	/* allocate working buffer */
+	yaffs2_data_buffer = (unsigned char *)malloc(yaffs2_chunk_size +
+						     yaffs2_spare_size);
+	if (yaffs2_data_buffer == NULL) {
+		fprintf(stderr, "cannot allocate working buffer ");
+		fprintf(stderr, "(default: %u bytes)\n",
+			yaffs2_chunk_size + yaffs2_spare_size);
+		free(yaffs2_object_list);
 		return -1;
 	}
 
 	/* output file */
-	yaffs2_outfd = open(output_path, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+	yaffs2_outfd = open(output_path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
 	if (yaffs2_outfd < 0) {
 		fprintf(stderr, "cannot open the ourput file: %s\n", 
 			output_path);
+		free(yaffs2_data_buffer);
 		free(yaffs2_object_list);
 		return -1;
 	}
@@ -862,6 +730,7 @@ main(int argc, char *argv[])
 	retval = write_object_header("", &statbuf, YAFFS_OBJECT_TYPE_DIRECTORY,
 				     NULL, 1, 1, -1);
 	if (!retval) {
+		yaffs2_total_objects++;
 		retval = parse_directory(YAFFS_OBJECTID_ROOT, input_path);
 	}
 
@@ -875,7 +744,8 @@ main(int argc, char *argv[])
 			yaffs2_total_pages);
 	}
 
-	free(yaffs2_object_list);	
+	free(yaffs2_data_buffer);
+	free(yaffs2_object_list);
 	close(yaffs2_outfd);
 
 	return retval;

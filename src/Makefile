@@ -24,17 +24,13 @@ CFLAGS		=  -I. -O2 -Wall -DCONFIG_YAFFS_UTIL
 CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes -Wmissing-declarations
 CFLAGS		+= -Wmissing-prototypes -Wredundant-decls -Wnested-externs -Winline
 
-ifneq ($(KERNELDIR), )
-	CFLAGS	+= -I$(KERNELDIR)
-endif
-
 ifneq ($(YAFFS2DIR), )
 	CFLAGS	+= -I$(YAFFS2DIR)
 endif
 
 CFLAGS		+= -D__HAVE_MMAP
 
-LIBSRCS		= yaffs2utils_io.c
+LIBSRCS		= yaffs2utils_io.c yaffs2utils_endian.c
 LIBOBJS		= $(LIBSRCS:.c=.o)
 
 COMMONLINKS	= yaffs_ecc.c yaffs_packedtags1.c yaffs_packedtags2.c yaffs_tagsvalidity.c

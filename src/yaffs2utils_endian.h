@@ -1,4 +1,4 @@
-/*
+/* 
  * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image.
  * Copyright (C) 2010 Luen-Yung Lin <penguin.lin@gmail.com>
  *
@@ -16,51 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <errno.h>
-#include <unistd.h>
+#ifndef _YAFFS2_UTILS_LIB_ENDIAN
+#define _YAFFS2_UTILS_LIB_ENDIAN
 
-#include "yaffs2utils_io.h"
+void object_header_endian_transform (yaffs_ObjectHeader *oh);
+void packedtags1_endian_transform (yaffs_PackedTags1 *pt, unsigned reverse);
+void packedtags2_tagspart_endian_transform (yaffs_PackedTags2 *t);
+void packedtags2_eccother_endian_transform (yaffs_PackedTags2 *t);
 
-/*-------------------------------------------------------------------------*/
-
-ssize_t
-safe_read (int fd, void *buf, size_t count)
-{
-	ssize_t r;
-	size_t reads = 0;
-
-	while (reads < count &&
-	       (r = read(fd, (char *)buf + reads, count - reads)) != 0)
-	{
-		if (r < 0) {
-			if (errno == EINTR) {
-				continue;
-			}
-			return -1;
-		}
-		reads += r;
-	}
-
-	return reads;
-}
-
-ssize_t
-safe_write (int fd, const void *buf, size_t count)
-{
-	ssize_t w;
-	size_t written = 0;
-
-	while (written < count &&
-	       (w = write(fd, (char *)buf + written, count - written)) != 0)
-	{
-		if (w < 0) {
-			if (errno == EINTR) {
-				continue;
-			}
-			return -1;
-		}
-		written += w;
-	}
-
-	return written;
-}
+#endif
