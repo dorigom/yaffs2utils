@@ -54,6 +54,12 @@ $(COMMONOBJS): %.o: %.c
 $(LIBOBJS): %.o: %.c
 	$(CC) -c $(CFLAGS) $< -o $@
 
+$(MKYAFFS2OBJS): %o: %c
+	$(CC) -c $(CFLAGS) $< -o $@
+
+$(UNYAFFS2OBJS): %o: %c
+	$(CC) -c $(CFLAGS) $< -o $@
+
 mkyaffs2: $(COMMONOBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
 	$(CC) -o $@ $(COMMONOBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
 
