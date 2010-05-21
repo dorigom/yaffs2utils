@@ -16,8 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2_UTILS_LIB_ENDIAN
-#define _YAFFS2_UTILS_LIB_ENDIAN
+#ifndef _YAFFS2UTILS_ENDIAN
+#define _YAFFS2UTILS_ENDIAN
 
 void object_header_endian_transform (yaffs_ObjectHeader *oh);
 void packedtags1_endian_transform (yaffs_PackedTags1 *pt, unsigned reverse);

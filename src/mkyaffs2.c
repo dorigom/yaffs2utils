@@ -605,9 +605,9 @@ parse_directory (unsigned parent, const char *path)
 static void
 show_usage (void)
 {
-	fprintf(stderr, "Usage: mkyaffs2 [-e] [-h] [-p pagesize] dirname outfile\n");
-	fprintf(stderr, "mkyaffs2: A simple utility to make the yaffs2 image\n");
-	fprintf(stderr, "version: %s\n\n", YAFFS2PROGS_VERSION);
+	fprintf(stderr, "Usage: mkyaffs2 [-e] [-h] [-p pagesize] dirname imgfile\n");
+	fprintf(stderr, "mkyaffs2: A utility to make the yaffs2 image\n");
+	fprintf(stderr, "version: %s\n", YAFFS2PROGS_VERSION);
 	fprintf(stderr, "options:\n");
 	fprintf(stderr, "	-h		display this help message and exit\n");
 	fprintf(stderr, "	-e		convert the endian differed from the local machine\n");

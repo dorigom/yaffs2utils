@@ -542,7 +542,8 @@ extract_image_mmap (unsigned char *addr, size_t size)
 			yaffs_UnpackTags1(&t, &pt1);
 		}
 
-		if (t.chunkId == 0) {	/* new object */
+		/* new object */
+		if (t.chunkId == 0) {
 			int retval = -1;
 			char filepath[PATH_MAX] = {0}, linkpath[PATH_MAX] = {0};
 			yaffs_ObjectHeader oh;
@@ -644,9 +645,9 @@ next:
 static void
 show_usage (void)
 {
-	fprintf(stderr, "Usage: unyaffs2 [-h] [-p pagesize] infile dirname\n");
+	fprintf(stderr, "Usage: unyaffs2 [-h] [-p pagesize] imgfile dirname\n");
 	fprintf(stderr, "unyaffs2: A utility to extract the yaffs2 image\n");
-	fprintf(stderr, "version: %s\n\n", YAFFS2PROGS_VERSION);
+	fprintf(stderr, "version: %s\n", YAFFS2PROGS_VERSION);
 	fprintf(stderr, "options:\n");
 	fprintf(stderr, "	-h		display this help message and exit\n");
 	fprintf(stderr, "	-e		convert the endian differed from the local machine\n");
