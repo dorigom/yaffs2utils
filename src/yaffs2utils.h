@@ -19,7 +19,7 @@
 #ifndef _YAFFS2UTILS_H
 #define _YAFFS2UTILS_H
 
-#define YAFFS2PROGS_VERSION	"0.1.1"
+#define YAFFS2UTILS_VERSION	"0.1.3"
 
 /* from Linux Kernel */
 static u_int32_t nand_oobfree_16[8][2] = {{8, 8}};

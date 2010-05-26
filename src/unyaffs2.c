@@ -647,7 +647,7 @@ show_usage (void)
 {
 	fprintf(stderr, "Usage: unyaffs2 [-h] [-p pagesize] imgfile dirname\n");
 	fprintf(stderr, "unyaffs2: A utility to extract the yaffs2 image\n");
-	fprintf(stderr, "version: %s\n", YAFFS2PROGS_VERSION);
+	fprintf(stderr, "version: %s\n", YAFFS2UTILS_VERSION);
 	fprintf(stderr, "options:\n");
 	fprintf(stderr, "	-h		display this help message and exit\n");
 	fprintf(stderr, "	-e		convert the endian differed from the local machine\n");
@@ -676,7 +676,7 @@ main (int argc, char* argv[])
 	};
 
 	printf("unyaffs2-%s: image extracting tool for YAFFS2\n",
-		YAFFS2PROGS_VERSION);
+		YAFFS2UTILS_VERSION);
 
 	yaffs2_chunk_size = DEFAULT_CHUNK_SIZE;
 
