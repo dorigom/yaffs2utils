@@ -102,7 +102,7 @@ object_list_add (object_item_t *object)
 
 	if (yaffs2_total_objects > 0 &&
 	    (r = bsearch(object, yaffs2_object_list, yaffs2_total_objects,
-		         sizeof(object_item_t), object_list_compare)) != NULL)
+			 sizeof(object_item_t), object_list_compare)) != NULL)
 	{
 		/* update entry if it has been added */
 		r->parent = object->parent;
@@ -252,26 +252,27 @@ spare2tags (unsigned char *tags, unsigned char *spare, size_t bytes)
 static int
 extract_file (const int fd, const char *fpath, yaffs_ObjectHeader *oh)
 {
-	int outfd, remain = oh->fileSize;
+	int outfd;
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	ssize_t reads, written;
+	size_t fsize = oh->fileSize, written = 0;
+	ssize_t w, r;
 
 	yaffs_ExtendedTags t;
 	yaffs_PackedTags1 pt1;
 	yaffs_PackedTags2 pt2;
 
-	outfd = open(fpath, O_CREAT | O_TRUNC | O_WRONLY, oh->yst_mode);
+	outfd = open(fpath, O_WRONLY | O_CREAT | O_TRUNC, oh->yst_mode);
 	if (outfd < 0) {
 		fprintf(stderr, "cannot create file %s\n", fpath);
 		return -1;
 	}
 
-	while (remain > 0 &&
-	       (reads = safe_read(fd, yaffs2_data_buffer, bufsize)) !=0)
+	while (written < fsize &&
+	       (r = safe_read(fd, yaffs2_data_buffer, bufsize)) !=0)
 	{
-		if (reads < 0 || reads != bufsize) {
+		if (r != bufsize) {
 			fprintf(stderr, "error while reading file %s\n", fpath);
-			return -1;
+			break;
 		}
 
 		if (yaffs2_chunk_size > 512) {
@@ -299,17 +300,17 @@ extract_file (const int fd, const char *fpath, yaffs_ObjectHeader *oh)
 			yaffs_UnpackTags1(&t, &pt1);
 		}
 
-		written = safe_write(outfd, yaffs2_data_buffer, t.byteCount);
-		if (written != t.byteCount) {
+		w = safe_write(outfd, yaffs2_data_buffer, t.byteCount);
+		if (w != t.byteCount) {
 			fprintf(stderr, "error while writing file %s", fpath);
-			return -1;
+			break;
 		}
 
-		remain -= written;
+		written += t.byteCount;
 	}
 
 	close(outfd);
-	return !(remain == 0);
+	return !(written == fsize);
 }
 
 #else
@@ -320,21 +321,38 @@ extract_file_mmap (unsigned char **addr,
 		   const char *fpath,
 		   yaffs_ObjectHeader *oh)
 {
-	int outfd, remain = oh->fileSize;
+	int outfd;
+	unsigned char *outaddr, *curaddr;
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	ssize_t written;
-	
+	size_t fsize = oh->fileSize, written = 0;
+
 	yaffs_ExtendedTags t;
 	yaffs_PackedTags1 pt1;
 	yaffs_PackedTags2 pt2;
 
-	outfd = open(fpath, O_CREAT | O_TRUNC | O_WRONLY, oh->yst_mode);
+	outfd = open(fpath, O_RDWR | O_CREAT | O_TRUNC, oh->yst_mode);
 	if (outfd < 0) {
 		fprintf(stderr, "cannot create file %s\n", fpath);
 		return -1;
 	}
 
-	while (remain > 0 && *size >= bufsize) {
+	/* stretch the file */
+	if (lseek(outfd, fsize - 1, SEEK_SET) < 0 ||
+	    safe_write(outfd, "", 1) != 1) 
+	{
+		fprintf(stderr, "cannot stretch the file %s\n", fpath);
+		goto out;
+	}
+
+	/* now mmap */
+	outaddr = mmap(NULL, fsize, PROT_WRITE, MAP_SHARED, outfd, 0);
+	if (outaddr == NULL) {
+		fprintf(stderr, "cannot mmap the file %s\n", fpath);
+		goto out;
+	}
+
+	curaddr = outaddr;
+	while (written < fsize && *size >= bufsize) {
 		if (yaffs2_chunk_size > 512) {
 			memset(&pt2, 0xFF, sizeof(yaffs_PackedTags2));
 			spare2tags((unsigned char *)&pt2,
@@ -360,20 +378,29 @@ extract_file_mmap (unsigned char **addr,
 			yaffs_UnpackTags1(&t, &pt1);
 		}
 
-		written = safe_write(outfd, *addr, t.byteCount);
-		if (written != t.byteCount) {
-			fprintf(stderr, "error while writing file %s", fpath);
-			close(outfd);
-			return -1;
+		memcpy(curaddr, *addr, t.byteCount);
+		if (memcmp(curaddr, *addr, t.byteCount)) {
+			fprintf(stderr, "error while writing file %s\n", fpath);
+			break;
 		}
 
-		remain -= written;
-		*addr += bufsize;
-		*size -= bufsize;
+		written += t.byteCount;
+		curaddr += t.byteCount;
+
+		if (written < fsize) {
+			/* the last image block */
+			if (*size - bufsize < bufsize) {
+				break;
+			}
+			*addr += bufsize;
+			*size -= bufsize;
+		}
 	}
 
+	munmap(outaddr, fsize);
+out:
 	close(outfd);
-	return !(remain == 0);
+	return !(written == fsize);
 }
 
 #endif
@@ -386,14 +413,14 @@ static int
 extract_image (const int fd)
 {
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	ssize_t reads;
+	ssize_t r;
 
-	while ((reads = safe_read(fd, yaffs2_data_buffer, bufsize)) != 0) {
+	while ((r = safe_read(fd, yaffs2_data_buffer, bufsize)) != 0) {
 		yaffs_ExtendedTags t;
 		yaffs_PackedTags1 pt1;
 		yaffs_PackedTags2 pt2;
 
-		if (reads < 0 || reads != bufsize) {
+		if (r != bufsize) {
 			return -1;
 		}
 
@@ -425,7 +452,7 @@ extract_image (const int fd)
 		/* new object */
 		if (t.chunkId == 0) {
 			int retval = -1;
-			char filepath[PATH_MAX] = {0}, linkpath[PATH_MAX] ={0};
+			char fpath[PATH_MAX] = {0}, lpath[PATH_MAX] ={0};
 			yaffs_ObjectHeader oh;
 			object_item_t obj;
 
@@ -450,32 +477,32 @@ extract_image (const int fd)
 
 			retval = object_list_add(&obj);
 			if (retval) {
-				fprintf(stderr, "error while adding object ");
-				fprintf(stderr, "%u into the objects list\n",
-                                        obj.object);
+				format_filepath(fpath, PATH_MAX, obj.parent);
+				fprintf(stderr, "error while extracting ");
+				fprintf(stderr, "files in the directory %s\n",
+					fpath);
 				return -1;
 			}
-			format_filepath(filepath, PATH_MAX, obj.object);
+			format_filepath(fpath, PATH_MAX, obj.object);
 
 			switch (oh.type) {
 			case YAFFS_OBJECT_TYPE_FILE:
-				printf("create file: %s\n", filepath);
-				retval = extract_file(fd, filepath, &oh);
+				printf("create file: %s\n", fpath);
+				retval = extract_file(fd, fpath, &oh);
 				break;
 			case YAFFS_OBJECT_TYPE_DIRECTORY:
-				printf("create directory %s\n", filepath);
-				retval = create_directory(filepath,
-							  oh.yst_mode);
+				printf("create directory %s\n", fpath);
+				retval = create_directory(fpath, oh.yst_mode);
 				break;
 			case YAFFS_OBJECT_TYPE_SYMLINK:
-				printf("create symlink: %s\n", filepath);
-				retval = symlink(oh.alias, filepath);
+				printf("create symlink: %s\n", fpath);
+				retval = symlink(oh.alias, fpath);
 				break;
 			case YAFFS_OBJECT_TYPE_HARDLINK:
-				printf("create hardlink: %s\n", filepath);
-				format_filepath(linkpath, PATH_MAX,
+				printf("create hardlink: %s\n", fpath);
+				format_filepath(lpath, PATH_MAX,
 						oh.equivalentObjectId);
-				retval = link(linkpath, filepath);
+				retval = link(lpath, fpath);
 				break;
 			case YAFFS_OBJECT_TYPE_SPECIAL:
 				if (S_ISBLK(oh.yst_mode) ||
@@ -483,21 +510,21 @@ extract_image (const int fd)
 				    S_ISFIFO(oh.yst_mode) ||
 				    S_ISSOCK(oh.yst_mode))
 				{
-					printf("create dev node: %s\n",
-					       filepath);
-					retval = mknod(filepath, oh.yst_mode,
+					printf("create dev node: %s\n", fpath);
+					retval = mknod(fpath, oh.yst_mode,
 						       oh.yst_rdev);
 				}
 				break;
 			default:
 				retval = -1;
-				fprintf(stderr, "unsupported object type %u\n", oh.type);
+				fprintf(stderr, "warning: unsupported type ");
+				fprintf(stderr, "%d for %s", oh.type, fpath);
 				break;
 			}
 
 			if (retval) {
 				fprintf(stderr, "error while extracting %s\n",
-					filepath);
+					fpath);
 			}
 		}
 	}
@@ -545,7 +572,7 @@ extract_image_mmap (unsigned char *addr, size_t size)
 		/* new object */
 		if (t.chunkId == 0) {
 			int retval = -1;
-			char filepath[PATH_MAX] = {0}, linkpath[PATH_MAX] = {0};
+			char fpath[PATH_MAX] = {0}, lpath[PATH_MAX] = {0};
 			yaffs_ObjectHeader oh;
 			object_item_t obj;
 
@@ -570,36 +597,36 @@ extract_image_mmap (unsigned char *addr, size_t size)
 
 			retval = object_list_add(&obj);
 			if (retval) {
-				fprintf(stderr, "error while adding object ");
-				fprintf(stderr, "%u into the objects list\n",
-                                        obj.object);
+				format_filepath(fpath, PATH_MAX, obj.parent);
+				fprintf(stderr, "error while extracting ");
+				fprintf(stderr, "files in the directory %s\n",
+					fpath);
 				return -1;
 			}
 
-			format_filepath(filepath, PATH_MAX, obj.object);
+			format_filepath(fpath, PATH_MAX, obj.object);
 
 			switch (oh.type) {
 			case YAFFS_OBJECT_TYPE_FILE:
-				printf("create file: %s\n", filepath);
+				printf("create file: %s\n", fpath);
 				addr += bufsize;
 				size -= bufsize;
 				retval = extract_file_mmap(&addr, &size,
-							   filepath, &oh);
+							   fpath, &oh);
 				break;
 			case YAFFS_OBJECT_TYPE_DIRECTORY:
-				printf("create directory %s\n", filepath);
-				retval = create_directory(filepath,
-							  oh.yst_mode);
+				printf("create directory %s\n", fpath);
+				retval = create_directory(fpath, oh.yst_mode);
 				break;
 			case YAFFS_OBJECT_TYPE_SYMLINK:
-				printf("create symlink: %s\n", filepath);
-				retval = symlink(oh.alias, filepath);
+				printf("create symlink: %s\n", fpath);
+				retval = symlink(oh.alias, fpath);
 				break;
 			case YAFFS_OBJECT_TYPE_HARDLINK:
-				printf("create hardlink: %s\n", filepath);
-				format_filepath(linkpath, PATH_MAX,
+				printf("create hardlink: %s\n", fpath);
+				format_filepath(lpath, PATH_MAX,
 						oh.equivalentObjectId);
-				retval = link(linkpath, filepath);
+				retval = link(lpath, fpath);
 				break;
 			case YAFFS_OBJECT_TYPE_SPECIAL:
 				if (S_ISBLK(oh.yst_mode) ||
@@ -607,26 +634,21 @@ extract_image_mmap (unsigned char *addr, size_t size)
 				    S_ISFIFO(oh.yst_mode) ||
 				    S_ISSOCK(oh.yst_mode))
 				{
-					printf("create dev node: %s\n",
-					       filepath);
-					retval = mknod(filepath, oh.yst_mode,
+					printf("create dev node: %s\n", fpath);
+					retval = mknod(fpath, oh.yst_mode,
 						       oh.yst_rdev);
 				}
 				break;
 			default:
 				retval = -1;
-				fprintf(stderr, "unsupported object type %u\n",
-					oh.type);
+				fprintf(stderr, "warning: unsupported type ");
+				fprintf(stderr, "%d for %s", oh.type, fpath);
 				break;
 			}
 
 			if (retval) {
 				fprintf(stderr, "error while extracting %s\n",
-					filepath);
-			}
-
-			if (oh.type == YAFFS_OBJECT_TYPE_FILE) {
-				continue;
+					fpath);
 			}
 		}
 
@@ -661,7 +683,7 @@ int
 main (int argc, char* argv[])
 {
 	int retval, objsize, fd;
-	char *input_path, *output_path;
+	char *imgpath, *dirpath;
 	struct stat statbuf;
 #ifdef __HAVE_MMAP
 	void *addr;
@@ -706,8 +728,8 @@ main (int argc, char* argv[])
 		return -1;
 	}
 
-	input_path = argv[optind];
-	output_path = argv[optind + 1];
+	imgpath = argv[optind];
+	dirpath = argv[optind + 1];
 
 	/* valid whethe the page size is valid */
 	switch (yaffs2_chunk_size) {
@@ -727,10 +749,10 @@ main (int argc, char* argv[])
 	yaffs2_spare_size = yaffs2_chunk_size / 32;
 
 	/* verify whether the input image is valid */
-	if (stat(input_path, &statbuf) < 0 &&
+	if (stat(imgpath, &statbuf) < 0 &&
 	    !S_ISREG(statbuf.st_mode))
 	{
-		fprintf(stderr, "%s is not a regular file\n", input_path);
+		fprintf(stderr, "%s is not a regular file\n", imgpath);
 		return -1;
 	}
 
@@ -741,9 +763,9 @@ main (int argc, char* argv[])
 	}
 
 	/* verify whether the output image is valid */
-	if (create_directory(output_path, 0755) < 0) {
+	if (create_directory(dirpath, 0755) < 0) {
 		fprintf(stderr, "cannot create the directory %s (permission?)",
-			output_path);
+			dirpath);
 		return -1;
 	}
 
@@ -757,15 +779,15 @@ main (int argc, char* argv[])
 		return -1;
 	}
 
-	fd = open(input_path, O_RDONLY);
+	fd = open(imgpath, O_RDONLY);
 	if (fd < 0) {
-		fprintf(stderr, "cannot open the image file %s\n", input_path);
+		fprintf(stderr, "cannot open the image file %s\n", imgpath);
 		free(yaffs2_object_list);
 		return -1;
 	}
 
-	chdir(output_path);
-	printf("extracting image to \"%s\"\n", output_path);
+	chdir(dirpath);
+	printf("extracting image to \"%s\"\n", dirpath);
 #ifndef __HAVE_MMAP
 	yaffs2_data_buffer = (unsigned char *)malloc(yaffs2_chunk_size +
 						     yaffs2_spare_size);

@@ -1,3 +1,22 @@
+2010-06-07	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.5
+-------------
+
+	* mkyaffs2
+	- Fix typos.
+	- Modify codes to parse a directory.
+
+	* unyaffs2
+	- Fix typos.
+	- Fix possible file descriptor leakage while extracting a file.
+	- Use mmap() to extract a file while the mmap() supports is enabled.
+	- Modify codes to extract a file.
+
+	* CHANGELOG
+	- Fix typo in "Version 0.1.0" log.
+
+
 2010-05-25	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.3
@@ -48,7 +67,7 @@ Version 0.1.0
 	- Fix possible memory leakage when error occurred in mkyaffs2.
 	- Fix possibe issue when using realloc().
 	- Fix typo issues.
-	- Using a global working buffer to parse the directroy in the mkyaffs2
+	- Use a global working buffer to parse the directroy in the mkyaffs2
 	  instead of the local buffer allocatation during writting chunks.
 	- Enhance the mkyaffs2 to write the whole "chunk + spare" at one time
 	  instead of "storing the chunk first then writing the spare" during

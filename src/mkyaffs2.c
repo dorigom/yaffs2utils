@@ -115,7 +115,7 @@ object_list_add (object_item_t *object)
 			yaffs2_object_list_size = YAFFS_UNUSED_OBJECT_ID;
 		}
 		else {
-	                fprintf(stderr, "too much objects (max: %u)\n",
+			fprintf(stderr, "too much objects (max: %u)\n",
 				YAFFS_UNUSED_OBJECT_ID);
 			return -1;
 		}
@@ -469,13 +469,14 @@ parse_directory (unsigned parent, const char *path)
 			continue;
 		}
 
-		int retval = -1;	
+		int retval = 0;
  		char fpath[PATH_MAX];
 		struct stat s;
 		
 		sprintf(fpath, "%s/%s", path, dent->d_name);
 		if (lstat(fpath, &s) < 0) {
-			fprintf(stderr, "cannot stat the file: %s\n", fpath);
+			fprintf(stderr, "warning: cannot stat the file: %s\n",
+				fpath);
 			continue;
 		}
 		
@@ -509,20 +510,14 @@ parse_directory (unsigned parent, const char *path)
 							     ftype, NULL, id,
 							     parent, obj.obj);
 				if (retval) {
-					fprintf(stderr, "error while parsing ");
-					fprintf(stderr, "%s\n", fpath);
-					return -1;
+					goto error;
 				}
 				continue;
 			}
 
 			retval = object_list_add(&obj);
 			if (retval) {
-				fprintf(stderr, "error while adding object ");
-				fprintf(stderr, "%u into the objects list\n",
-					id);
-				fprintf(stderr, "(%s)\n", fpath);
-				return -1;
+				goto error;
 			}
 
 			if (S_ISLNK(s.st_mode)) {
@@ -591,6 +586,7 @@ parse_directory (unsigned parent, const char *path)
 				fpath);
 		}
 
+error:
 		if (retval) {
 			fprintf(stderr, "error while parsing %s\n", fpath);
 			return -1;
@@ -621,7 +617,7 @@ int
 main (int argc, char *argv[])
 {
 	int retval, objsize;
-	char *input_path, *output_path;
+	char *dirpath, *imgpath;
 	struct stat statbuf;
 	
 	int option, option_index;
@@ -663,8 +659,8 @@ main (int argc, char *argv[])
 		return -1;
 	}
 
-	input_path = argv[optind];
-	output_path = argv[optind + 1];
+	dirpath = argv[optind];
+	imgpath = argv[optind + 1];
 
 	/* valid whethe the page size is valid */
 	switch (yaffs2_chunk_size) {
@@ -686,10 +682,10 @@ main (int argc, char *argv[])
 	yaffs2_spare_size = yaffs2_chunk_size / 32;
 
 	/* verify whether the input directory is valid */
-	if (stat(input_path, &statbuf) < 0 && 
+	if (stat(dirpath, &statbuf) < 0 && 
 	    !S_ISDIR(statbuf.st_mode))
 	{
-		fprintf(stderr, "%s is not a directory\n", input_path);
+		fprintf(stderr, "%s is not a directory\n", dirpath);
 		return -1;
 	}
 
@@ -716,22 +712,22 @@ main (int argc, char *argv[])
 	}
 
 	/* output file */
-	yaffs2_outfd = open(output_path, O_CREAT | O_TRUNC | O_WRONLY, 0644);
+	yaffs2_outfd = open(imgpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (yaffs2_outfd < 0) {
 		fprintf(stderr, "cannot open the ourput file: %s\n", 
-			output_path);
+			imgpath);
 		free(yaffs2_data_buffer);
 		free(yaffs2_object_list);
 		return -1;
 	}
 
 	printf("Processing directory %s into image file %s\n",
-		input_path, output_path);
+		dirpath, imgpath);
 	retval = write_object_header("", &statbuf, YAFFS_OBJECT_TYPE_DIRECTORY,
 				     NULL, 1, 1, -1);
 	if (!retval) {
 		yaffs2_total_objects++;
-		retval = parse_directory(YAFFS_OBJECTID_ROOT, input_path);
+		retval = parse_directory(YAFFS_OBJECTID_ROOT, dirpath);
 	}
 
 	if (retval) {
