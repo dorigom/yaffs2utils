@@ -19,7 +19,18 @@
 #ifndef _YAFFS2UTILS_H
 #define _YAFFS2UTILS_H
 
-#define YAFFS2UTILS_VERSION	"0.1.3"
+#define YAFFS2UTILS_VERSION	"0.1.6"
+
+#define DEFAULT_CHUNK_SIZE	2048
+#define DEFAULT_OBJECT_NUMBERS	65536
+
+#if defined(YAFFS_MAX_OBJECT_ID)
+#define MAX_OBJECT_NUMBERS	YAFFS_MAX_OBJECT_ID
+#elif defined(YAFFS_UNUSED_OBJECT_ID)
+#define MAX_OBJECT_NUMBERS	YAFFS_UNUSED_OBJECT_ID
+#else
+#define MAX_OBJECT_NUMBERS	DEFAULT_OBJECT_NUMBERS
+#endif
 
 /* from Linux Kernel */
 static u_int32_t nand_oobfree_16[8][2] = {{8, 8}};

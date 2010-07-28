@@ -50,11 +50,6 @@ unsigned yaffs_traceMask = 0;
 
 /*-------------------------------------------------------------------------*/
 
-#define DEFAULT_CHUNK_SIZE	2048
-#define DEFAULT_OBJECT_NUMBERS	65536
-
-/*-------------------------------------------------------------------------*/
-
 typedef struct object_item {
 	unsigned object;
 	unsigned parent;
@@ -114,15 +109,15 @@ object_list_add (object_item_t *object)
 		size_t newsize;
 		object_item_t *newlist;
 
-		if (yaffs2_object_list_size * 2 < YAFFS_UNUSED_OBJECT_ID) {
+		if (yaffs2_object_list_size * 2 < MAX_OBJECT_NUMBERS) {
 			yaffs2_object_list_size *= 2;
 		}
-		else if (yaffs2_object_list_size < YAFFS_UNUSED_OBJECT_ID) {
-			yaffs2_object_list_size = YAFFS_UNUSED_OBJECT_ID;
+		else if (yaffs2_object_list_size < MAX_OBJECT_NUMBERS) {
+			yaffs2_object_list_size = MAX_OBJECT_NUMBERS;
 		}
 		else {
 			fprintf(stderr, "too much objects (max: %u)\n", 
-				YAFFS_UNUSED_OBJECT_ID);
+				MAX_OBJECT_NUMBERS);
 			return -1;
 		}
 
@@ -336,6 +331,10 @@ extract_file_mmap (unsigned char **addr,
 		return -1;
 	}
 
+	if (fsize == 0) {
+		goto out;
+	}
+
 	/* stretch the file */
 	if (lseek(outfd, fsize - 1, SEEK_SET) < 0 ||
 	    safe_write(outfd, "", 1) != 1) 
@@ -387,11 +386,7 @@ extract_file_mmap (unsigned char **addr,
 		written += t.byteCount;
 		curaddr += t.byteCount;
 
-		if (written < fsize) {
-			/* the last image block */
-			if (*size - bufsize < bufsize) {
-				break;
-			}
+		if (written < fsize && *size >= bufsize) {
 			*addr += bufsize;
 			*size -= bufsize;
 		}
@@ -609,8 +604,10 @@ extract_image_mmap (unsigned char *addr, size_t size)
 			switch (oh.type) {
 			case YAFFS_OBJECT_TYPE_FILE:
 				printf("create file: %s\n", fpath);
-				addr += bufsize;
-				size -= bufsize;
+				if (oh.fileSize > 0) {
+					addr += bufsize;
+					size -= bufsize;
+				}
 				retval = extract_file_mmap(&addr, &size,
 							   fpath, &oh);
 				break;
@@ -653,8 +650,10 @@ extract_image_mmap (unsigned char *addr, size_t size)
 		}
 
 next:
-		addr += bufsize;
-		size -= bufsize;
+		if (size >= bufsize) {
+			addr += bufsize;
+			size -= bufsize;
+		}
 	}
 
 	return 0;

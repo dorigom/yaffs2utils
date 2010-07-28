@@ -1,3 +1,22 @@
+2010-07-21	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.6
+-------------
+
+	* mkyaffs2
+	- Fix #1: Error during Makefile.
+	- Fix #2: Problems with zero Bytes files.
+
+	* unyaffs2
+	- Fix #1: Error during Makefile.
+	- Fix #2: Problems with zero Bytes files.
+	- Fix possible issue while extracting a file by using mmap().
+
+	* others
+	- Fix un-matched version string.
+	- Fix Makefile typos.
+
+
 2010-06-07	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.5

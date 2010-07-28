@@ -1,4 +1,3 @@
-################################################################################
 #
 # Makefile for yaffs2utils.
 #
@@ -18,7 +17,6 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-################################################################################
 
 CFLAGS		=  -I. -O2 -Wall -DCONFIG_YAFFS_UTIL
 CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes -Wmissing-declarations

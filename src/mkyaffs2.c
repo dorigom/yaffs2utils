@@ -50,11 +50,6 @@ unsigned yaffs_traceMask = 0;
 
 /*-------------------------------------------------------------------------*/
 
-#define DEFAULT_CHUNK_SIZE	2048
-#define DEFAULT_OBJECT_NUMBERS	65536
-
-/*-------------------------------------------------------------------------*/
-
 typedef struct object_item {
 	dev_t dev;
 	ino_t ino;
@@ -108,15 +103,15 @@ object_list_add (object_item_t *object)
 		size_t newsize;
 		object_item_t *newlist;
 
-		if (yaffs2_object_list_size * 2 < YAFFS_UNUSED_OBJECT_ID) {
+		if (yaffs2_object_list_size * 2 < MAX_OBJECT_NUMBERS) {
 			yaffs2_object_list_size *= 2;
 		}
-		else if (yaffs2_object_list_size <  YAFFS_UNUSED_OBJECT_ID) {
-			yaffs2_object_list_size = YAFFS_UNUSED_OBJECT_ID;
+		else if (yaffs2_object_list_size <  MAX_OBJECT_NUMBERS) {
+			yaffs2_object_list_size = MAX_OBJECT_NUMBERS;
 		}
 		else {
 			fprintf(stderr, "too much objects (max: %u)\n",
-				YAFFS_UNUSED_OBJECT_ID);
+				MAX_OBJECT_NUMBERS);
 			return -1;
 		}
 
@@ -411,7 +406,7 @@ parse_regular_file (const char *fpath,
 		    unsigned object_id,
 		    unsigned parent_id)
 {
-	int fd, retval = -1;
+	int fd, retval = 0;
 	ssize_t bytes;
 	unsigned chunk = 0;
 	unsigned char *datbuf = yaffs2_data_buffer;

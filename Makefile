@@ -1,4 +1,3 @@
-################################################################################
 #
 # Makefile for yaffs2utils.
 #
@@ -18,7 +17,6 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-################################################################################
 
 # change or override with your yaffs2 source
 YAFFS2DIR	= /archive/projects/yaffs2
@@ -39,5 +37,6 @@ src:
 
 clean distclean:
 	$(MAKE) -C $(SRCROOT) $@
+
 
 .PHONY: all src clean distclean
