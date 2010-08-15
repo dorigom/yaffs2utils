@@ -28,11 +28,11 @@ endif
 
 CFLAGS		+= -D__HAVE_MMAP
 
-LIBSRCS		= yaffs2utils_io.c yaffs2utils_endian.c
-LIBOBJS		= $(LIBSRCS:.c=.o)
-
 COMMONLINKS	= yaffs_ecc.c yaffs_packedtags1.c yaffs_packedtags2.c yaffs_tagsvalidity.c
 COMMONOBJS	= $(COMMONLINKS:.c=.o)
+
+LIBSRCS		= yaffs2utils_io.c yaffs2utils_endian.c
+LIBOBJS		= $(LIBSRCS:.c=.o)
 
 MKYAFFS2SRCS	= mkyaffs2.c
 MKYAFFS2OBJS	= $(MKYAFFS2SRCS:.c=.o)

@@ -1,3 +1,17 @@
+2010-08-15	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.7
+-------------
+	* mkyaffs2
+	- Add warning message when it is executed by non-root users.
+
+	* unyaffs2
+	- Add warning message when it is executed by non-root users.
+
+	* others
+	- Fix #3: yaffs2utils-latest.tar.gz doesn't build.
+
+
 2010-07-21	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.6

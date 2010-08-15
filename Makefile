@@ -32,7 +32,7 @@ all: src
 
 src:
 	CC="$(CC)" \
-	YAFFS2DIR="$(shell readlink -f "${YAFFS2DIR}")" \
+	YAFFS2DIR="$(shell readlink -f ${YAFFS2DIR})" \
 	$(MAKE) -C $(SRCROOT)
 
 clean distclean:

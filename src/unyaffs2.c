@@ -699,6 +699,10 @@ main (int argc, char* argv[])
 	printf("unyaffs2-%s: image extracting tool for YAFFS2\n",
 		YAFFS2UTILS_VERSION);
 
+	if (getuid() != 0) {
+		fprintf(stderr, "warning: non-root users\n");
+	}
+
 	yaffs2_chunk_size = DEFAULT_CHUNK_SIZE;
 
 	while ((option = getopt_long(argc, argv, short_options,
