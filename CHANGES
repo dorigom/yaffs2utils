@@ -1,7 +1,20 @@
+2010-09-20	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.8
+-------------
+
+	* mkyaffs2
+	- Fix unclosed dir stream while parsing the directory.
+
+	* others:
+	- Fix typos in "CHANGELOG".
+
+
 2010-08-15	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.7
 -------------
+
 	* mkyaffs2
 	- Add warning message when it is executed by non-root users.
 

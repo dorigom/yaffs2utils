@@ -584,9 +584,12 @@ parse_directory (unsigned parent, const char *path)
 error:
 		if (retval) {
 			fprintf(stderr, "error while parsing %s\n", fpath);
+			closedir(path);
 			return -1;
 		}
 	}
+
+	closedir(path);
 
 	return 0;
 }
