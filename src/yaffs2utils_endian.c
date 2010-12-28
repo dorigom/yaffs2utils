@@ -17,6 +17,7 @@
  */
  
 #include <stdio.h>
+#include <string.h>
 #include <asm/byteorder.h>
 
 #include "yaffs_packedtags1.h"
@@ -27,82 +28,73 @@
 
 /*-------------------------------------------------------------------------*/
 
-#define ENDIAN_SWAP32(x)	((((x) & 0x000000FF) << 24) | \
+#define ENDIAN_SWAP_32(x)	((((x) & 0x000000FF) << 24) | \
 				(((x) & 0x0000FF00) << 8) | \
 				(((x) & 0x00FF0000) >> 8) | \
 				(((x) & 0xFF000000) >> 24))
-#define ENDIAN_SWAP16(x)	((((x) & 0x00FF) << 8) | \
+#define ENDIAN_SWAP_16(x)	((((x) & 0x00FF) << 8) | \
 				(((x) & 0xFF00) >> 8))
 
 /*-------------------------------------------------------------------------*/
 
 void 
-object_header_endian_transform (yaffs_ObjectHeader *oh)
+objheader_endian_transform (struct yaffs_obj_hdr *oh)
 {
-	oh->type = ENDIAN_SWAP32(oh->type); // GCC makes enums 32 bits.
-	oh->parentObjectId = ENDIAN_SWAP32(oh->parentObjectId); // int
+	oh->type = ENDIAN_SWAP_32(oh->type); // GCC makes enums 32 bits.
+	oh->parent_obj_id = ENDIAN_SWAP_32(oh->parent_obj_id); // int
 	// __u16 - Not used, but done for completeness.
-	oh->sum__NoLongerUsed = ENDIAN_SWAP16(oh->sum__NoLongerUsed);
-	oh->yst_mode = ENDIAN_SWAP32(oh->yst_mode);
+	oh->sum_no_longer_used = ENDIAN_SWAP_16(oh->sum_no_longer_used);
+	oh->yst_mode = ENDIAN_SWAP_32(oh->yst_mode);
 
 #ifdef CONFIG_YAFFS_WINCE 
 	/* 
 	 * WinCE doesn't implement this, but we need to just in case. 
 	 * In fact, WinCE would be *THE* place where this would be an issue!
 	 */
-	oh->notForWinCE[0] = ENDIAN_SWAP32(oh->notForWinCE[0]);
-	oh->notForWinCE[1] = ENDIAN_SWAP32(oh->notForWinCE[1]);
-	oh->notForWinCE[2] = ENDIAN_SWAP32(oh->notForWinCE[2]);
-	oh->notForWinCE[3] = ENDIAN_SWAP32(oh->notForWinCE[3]);
-	oh->notForWinCE[4] = ENDIAN_SWAP32(oh->notForWinCE[4]);
+	oh->not_for_wince[0] = ENDIAN_SWAP_32(oh->not_for_wince[0]);
+	oh->not_for_wince[1] = ENDIAN_SWAP_32(oh->not_for_wince[1]);
+	oh->not_for_wince[2] = ENDIAN_SWAP_32(oh->not_for_wince[2]);
+	oh->not_for_wince[3] = ENDIAN_SWAP_32(oh->not_for_wince[3]);
+	oh->not_for_wince[4] = ENDIAN_SWAP_32(oh->not_for_wince[4]);
 #else
 	// Regular POSIX.
-	oh->yst_uid = ENDIAN_SWAP32(oh->yst_uid);
-	oh->yst_gid = ENDIAN_SWAP32(oh->yst_gid);
-	oh->yst_atime = ENDIAN_SWAP32(oh->yst_atime);
-	oh->yst_mtime = ENDIAN_SWAP32(oh->yst_mtime);
-	oh->yst_ctime = ENDIAN_SWAP32(oh->yst_ctime);
+	oh->yst_uid = ENDIAN_SWAP_32(oh->yst_uid);
+	oh->yst_gid = ENDIAN_SWAP_32(oh->yst_gid);
+	oh->yst_atime = ENDIAN_SWAP_32(oh->yst_atime);
+	oh->yst_mtime = ENDIAN_SWAP_32(oh->yst_mtime);
+	oh->yst_ctime = ENDIAN_SWAP_32(oh->yst_ctime);
 #endif
 
-	oh->fileSize = ENDIAN_SWAP32(oh->fileSize);
-	oh->equivalentObjectId = ENDIAN_SWAP32(oh->equivalentObjectId);
-	oh->yst_rdev = ENDIAN_SWAP32(oh->yst_rdev);
+	oh->file_size = ENDIAN_SWAP_32(oh->file_size);
+	oh->equiv_id = ENDIAN_SWAP_32(oh->equiv_id);
+	oh->yst_rdev = ENDIAN_SWAP_32(oh->yst_rdev);
 
-#ifdef CONFIG_YAFFS_WINCE 
-	oh->win_ctime[0] = ENDIAN_SWAP32(oh->win_ctime[0]);
-	oh->win_ctime[1] = ENDIAN_SWAP32(oh->win_ctime[1]);
-	oh->win_atime[0] = ENDIAN_SWAP32(oh->win_atime[0]);
-	oh->win_atime[1] = ENDIAN_SWAP32(oh->win_atime[1]);
-	oh->win_mtime[0] = ENDIAN_SWAP32(oh->win_mtime[0]);
-	oh->win_mtime[1] = ENDIAN_SWAP32(oh->win_mtime[1]);
-#else
-	oh->roomToGrow[0] = ENDIAN_SWAP32(oh->roomToGrow[0]);
-	oh->roomToGrow[1] = ENDIAN_SWAP32(oh->roomToGrow[1]);
-	oh->roomToGrow[2] = ENDIAN_SWAP32(oh->roomToGrow[2]);
-	oh->roomToGrow[3] = ENDIAN_SWAP32(oh->roomToGrow[3]);
-	oh->roomToGrow[4] = ENDIAN_SWAP32(oh->roomToGrow[4]);
-	oh->roomToGrow[5] = ENDIAN_SWAP32(oh->roomToGrow[5]);
-#endif
+	oh->win_ctime[0] = ENDIAN_SWAP_32(oh->win_ctime[0]);
+	oh->win_ctime[1] = ENDIAN_SWAP_32(oh->win_ctime[1]);
+	oh->win_atime[0] = ENDIAN_SWAP_32(oh->win_atime[0]);
+	oh->win_atime[1] = ENDIAN_SWAP_32(oh->win_atime[1]);
+	oh->win_mtime[0] = ENDIAN_SWAP_32(oh->win_mtime[0]);
+	oh->win_mtime[1] = ENDIAN_SWAP_32(oh->win_mtime[1]);
 
-	oh->inbandShadowsObject = ENDIAN_SWAP32(oh->inbandShadowsObject);
-	oh->inbandIsShrink = ENDIAN_SWAP32(oh->inbandIsShrink);
-	oh->reservedSpace[0] = ENDIAN_SWAP32(oh->reservedSpace[0]);
-	oh->reservedSpace[1] = ENDIAN_SWAP32(oh->reservedSpace[1]);
-	oh->shadowsObject = ENDIAN_SWAP32(oh->shadowsObject);
-	oh->isShrink = ENDIAN_SWAP32(oh->isShrink);
+	oh->inband_shadowed_obj_id = ENDIAN_SWAP_32(oh->inband_shadowed_obj_id);
+	oh->inband_is_shrink = ENDIAN_SWAP_32(oh->inband_is_shrink);
+	oh->reserved[0] = ENDIAN_SWAP_32(oh->reserved[0]);
+	oh->reserved[1] = ENDIAN_SWAP_32(oh->reserved[1]);
+	oh->shadows_obj = ENDIAN_SWAP_32(oh->shadows_obj);
+	oh->is_shrink = ENDIAN_SWAP_32(oh->is_shrink);
 }
 
 /*-------------------------------------------------------------------------*/
 
 void
-packedtags1_endian_transform (yaffs_PackedTags1 *pt, unsigned reverse)
+packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse)
 {
-	yaffs_TagsUnion *tags = (yaffs_TagsUnion *)pt; // Work in bytes.
-	yaffs_TagsUnion temp;
-	unsigned char *pb = tags->asBytes;
-	unsigned char *tb = temp.asBytes;
+	union yaffs_tags_union *tags = (union yaffs_tags_union *)pt;
+	union yaffs_tags_union temp;
+	unsigned char *pb = tags->as_bytes;
+	unsigned char *tb = temp.as_bytes;
 
-	memset(&temp, 0, sizeof(yaffs_TagsUnion));
+	memset(&temp, 0, sizeof(union yaffs_tags_union));
 
 	/* I really hate these */
 	if (!reverse) {
@@ -202,21 +194,21 @@ packedtags1_endian_transform (yaffs_PackedTags1 *pt, unsigned reverse)
 /*-------------------------------------------------------------------------*/
 
 void
-packedtags2_tagspart_endian_transform (yaffs_PackedTags2 *t)
+packedtags2_tagspart_endian_transform (struct yaffs_packed_tags2 *t)
 {
-	yaffs_PackedTags2TagsPart *tp = &t->t;
+	struct yaffs_packed_tags2_tags_only *tp = &t->t;
 
-	tp->sequenceNumber = ENDIAN_SWAP32(tp->sequenceNumber);
-	tp->objectId = ENDIAN_SWAP32(tp->objectId);
-	tp->chunkId = ENDIAN_SWAP32(tp->chunkId);
-	tp->byteCount = ENDIAN_SWAP32(tp->byteCount);	
+	tp->seq_number = ENDIAN_SWAP_32(tp->seq_number);
+	tp->obj_id = ENDIAN_SWAP_32(tp->obj_id);
+	tp->chunk_id = ENDIAN_SWAP_32(tp->chunk_id);
+	tp->n_bytes = ENDIAN_SWAP_32(tp->n_bytes);	
 }
 
 void 
-packedtags2_eccother_endian_transform (yaffs_PackedTags2 *t)
+packedtags2_eccother_endian_transform (struct yaffs_packed_tags2 *t)
 {
-	yaffs_ECCOther *e = &t->ecc;
+	struct yaffs_ecc_other *e = &t->ecc;
 
-	e->lineParity = ENDIAN_SWAP32(e->lineParity);
-	e->lineParityPrime = ENDIAN_SWAP32(e->lineParityPrime);
+	e->line_parity = ENDIAN_SWAP_32(e->line_parity);
+	e->line_parity_prime = ENDIAN_SWAP_32(e->line_parity_prime);
 }

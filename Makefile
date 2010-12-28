@@ -18,9 +18,6 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-# change or override with your yaffs2 source
-YAFFS2DIR	= /archive/projects/yaffs2
-
 ## cross-compiler?
 CROSS 		= 
 CC		= $(CROSS)gcc
@@ -32,7 +29,6 @@ all: src
 
 src:
 	CC="$(CC)" \
-	YAFFS2DIR="$(shell readlink -f ${YAFFS2DIR})" \
 	$(MAKE) -C $(SRCROOT)
 
 clean distclean:

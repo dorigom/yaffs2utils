@@ -19,9 +19,9 @@
 #ifndef _YAFFS2UTILS_ENDIAN_H
 #define _YAFFS2UTILS_ENDIAN_H
 
-void object_header_endian_transform (yaffs_ObjectHeader *oh);
-void packedtags1_endian_transform (yaffs_PackedTags1 *pt, unsigned reverse);
-void packedtags2_tagspart_endian_transform (yaffs_PackedTags2 *t);
-void packedtags2_eccother_endian_transform (yaffs_PackedTags2 *t);
+void objheader_endian_transform (struct yaffs_obj_hdr *oh);
+void packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse);
+void packedtags2_tagspart_endian_transform (struct yaffs_packed_tags2 *t);
+void packedtags2_eccother_endian_transform (struct yaffs_packed_tags2 *t);
 
 #endif

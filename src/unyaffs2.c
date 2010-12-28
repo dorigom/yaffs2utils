@@ -24,6 +24,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -46,7 +47,7 @@
 
 /*-------------------------------------------------------------------------*/
 
-unsigned yaffs_traceMask = 0;
+unsigned yaffs_trace_mask = 0;
 
 /*-------------------------------------------------------------------------*/
 
@@ -245,16 +246,16 @@ spare2tags (unsigned char *tags, unsigned char *spare, size_t bytes)
 #ifndef __HAVE_MMAP
 
 static int
-extract_file (const int fd, const char *fpath, yaffs_ObjectHeader *oh)
+extract_file (const int fd, const char *fpath, struct yaffs_obj_hdr *oh)
 {
 	int outfd;
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	size_t fsize = oh->fileSize, written = 0;
+	size_t fsize = oh->file_size, written = 0;
 	ssize_t w, r;
 
-	yaffs_ExtendedTags t;
-	yaffs_PackedTags1 pt1;
-	yaffs_PackedTags2 pt2;
+	struct yaffs_ext_tags t;
+	struct yaffs_packed_tags1 pt1;
+	struct yaffs_packed_tags2 pt2;
 
 	outfd = open(fpath, O_WRONLY | O_CREAT | O_TRUNC, oh->yst_mode);
 	if (outfd < 0) {
@@ -271,37 +272,37 @@ extract_file (const int fd, const char *fpath, yaffs_ObjectHeader *oh)
 		}
 
 		if (yaffs2_chunk_size > 512) {
-			memset(&pt2, 0xFF, sizeof(yaffs_PackedTags2));
+			memset(&pt2, 0xFF, sizeof(struct yaffs_packed_tags2));
 			spare2tags((unsigned char *)&pt2,
 				   yaffs2_data_buffer + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags2));
+				   sizeof(struct yaffs_packed_tags2));
 
 			if (yaffs2_convert_endian) {
 				packedtags2_tagspart_endian_transform(&pt2);
 			}
 
-			yaffs_UnpackTags2TagsPart(&t, &pt2.t);
+			yaffs_unpack_tags2_tags_only(&t, &pt2.t);
 		}
 		else {
-			memset(&pt1, 0xFF, sizeof(yaffs_PackedTags1));
+			memset(&pt1, 0xFF, sizeof(struct yaffs_packed_tags1));
 			spare2tags((unsigned char *)&pt1,
 				   yaffs2_data_buffer + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags1));
+				   sizeof(struct yaffs_packed_tags1));
 
 			if (yaffs2_convert_endian) {
 				packedtags1_endian_transform(&pt1, 1);
 			}
 
-			yaffs_UnpackTags1(&t, &pt1);
+			yaffs_unpack_tags1(&t, &pt1);
 		}
 
-		w = safe_write(outfd, yaffs2_data_buffer, t.byteCount);
-		if (w != t.byteCount) {
+		w = safe_write(outfd, yaffs2_data_buffer, t.n_bytes);
+		if (w != t.n_bytes) {
 			fprintf(stderr, "error while writing file %s", fpath);
 			break;
 		}
 
-		written += t.byteCount;
+		written += t.n_bytes;
 	}
 
 	close(outfd);
@@ -314,16 +315,16 @@ static int
 extract_file_mmap (unsigned char **addr,
 		   size_t *size,
 		   const char *fpath,
-		   yaffs_ObjectHeader *oh)
+		   struct yaffs_obj_hdr *oh)
 {
 	int outfd;
 	unsigned char *outaddr, *curaddr;
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	size_t fsize = oh->fileSize, written = 0;
+	size_t fsize = oh->file_size, written = 0;
 
-	yaffs_ExtendedTags t;
-	yaffs_PackedTags1 pt1;
-	yaffs_PackedTags2 pt2;
+	struct yaffs_ext_tags t;
+	struct yaffs_packed_tags1 pt1;
+	struct yaffs_packed_tags2 pt2;
 
 	outfd = open(fpath, O_RDWR | O_CREAT | O_TRUNC, oh->yst_mode);
 	if (outfd < 0) {
@@ -353,38 +354,38 @@ extract_file_mmap (unsigned char **addr,
 	curaddr = outaddr;
 	while (written < fsize && *size >= bufsize) {
 		if (yaffs2_chunk_size > 512) {
-			memset(&pt2, 0xFF, sizeof(yaffs_PackedTags2));
+			memset(&pt2, 0xFF, sizeof(struct yaffs_packed_tags2));
 			spare2tags((unsigned char *)&pt2,
 				   *addr + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags2));
+				   sizeof(struct yaffs_packed_tags2));
 
 			if (yaffs2_convert_endian) {
 				packedtags2_tagspart_endian_transform(&pt2);
 			}
 
-			yaffs_UnpackTags2TagsPart(&t, &pt2.t);
+			yaffs_unpack_tags2_tags_only(&t, &pt2.t);
 		}
 		else {
-			memset(&pt1, 0xFF, sizeof(yaffs_PackedTags1));
+			memset(&pt1, 0xFF, sizeof(struct yaffs_packed_tags1));
 			spare2tags((unsigned char *)&pt1,
 				   *addr + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags1));
+				   sizeof(struct yaffs_packed_tags1));
 
 			if (yaffs2_convert_endian) {
 				packedtags1_endian_transform(&pt1, 1);
 			}
 
-			yaffs_UnpackTags1(&t, &pt1);
+			yaffs_unpack_tags1(&t, &pt1);
 		}
 
-		memcpy(curaddr, *addr, t.byteCount);
-		if (memcmp(curaddr, *addr, t.byteCount)) {
+		memcpy(curaddr, *addr, t.n_bytes);
+		if (memcmp(curaddr, *addr, t.n_bytes)) {
 			fprintf(stderr, "error while writing file %s\n", fpath);
 			break;
 		}
 
-		written += t.byteCount;
-		curaddr += t.byteCount;
+		written += t.n_bytes;
+		curaddr += t.n_bytes;
 
 		if (written < fsize && *size >= bufsize) {
 			*addr += bufsize;
@@ -411,54 +412,54 @@ extract_image (const int fd)
 	ssize_t r;
 
 	while ((r = safe_read(fd, yaffs2_data_buffer, bufsize)) != 0) {
-		yaffs_ExtendedTags t;
-		yaffs_PackedTags1 pt1;
-		yaffs_PackedTags2 pt2;
+		struct yaffs_ext_tags t;
+		struct yaffs_packed_tags1 pt1;
+		struct yaffs_packed_tags2 pt2;
 
 		if (r != bufsize) {
 			return -1;
 		}
 
 		if (yaffs2_chunk_size > 512) {
-			memset(&pt2, 0xFF, sizeof(yaffs_PackedTags2));
+			memset(&pt2, 0xFF, sizeof(struct yaffs_packed_tags2));
 			spare2tags((unsigned char *)&pt2,
 				   yaffs2_data_buffer + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags2));
+				   sizeof(struct yaffs_packed_tags2));
 
 			if (yaffs2_convert_endian) {
 				packedtags2_tagspart_endian_transform(&pt2);
 			}
 
-			yaffs_UnpackTags2TagsPart(&t, &pt2.t);
+			yaffs_unpack_tags2_tags_only(&t, &pt2.t);
 		}
 		else {
-			memset(&pt1, 0xFF, sizeof(yaffs_PackedTags1));
+			memset(&pt1, 0xFF, sizeof(struct yaffs_packed_tags1));
 			spare2tags((unsigned char *)&pt1,
 				   yaffs2_data_buffer + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags1));
+				   sizeof(struct yaffs_packed_tags1));
 
 			if (yaffs2_convert_endian) {
 				packedtags1_endian_transform(&pt1, 1);
 			}
 
-			yaffs_UnpackTags1(&t, &pt1);
+			yaffs_unpack_tags1(&t, &pt1);
 		}
 
 		/* new object */
-		if (t.chunkId == 0) {
+		if (t.chunk_id == 0) {
 			int retval = -1;
 			char fpath[PATH_MAX] = {0}, lpath[PATH_MAX] ={0};
-			yaffs_ObjectHeader oh;
+			struct yaffs_obj_hdr oh;
 			object_item_t obj;
 
-			memcpy(&oh, yaffs2_data_buffer, sizeof(yaffs_ObjectHeader));
+			memcpy(&oh, yaffs2_data_buffer, sizeof(struct yaffs_obj_hdr));
 			if (yaffs2_convert_endian) {
-				object_header_endian_transform(&oh);
+				objheader_endian_transform(&oh);
 			}
 
 			/* add object into object list */
-			obj.object = t.objectId;
-			obj.parent = oh.parentObjectId;
+			obj.object = t.obj_id;
+			obj.parent = oh.parent_obj_id;
 			strncpy(obj.name, oh.name, NAME_MAX);
 
 			if (strlen(obj.name) == 0 && 
@@ -496,7 +497,7 @@ extract_image (const int fd)
 			case YAFFS_OBJECT_TYPE_HARDLINK:
 				printf("create hardlink: %s\n", fpath);
 				format_filepath(lpath, PATH_MAX,
-						oh.equivalentObjectId);
+						oh.equiv_id);
 				retval = link(lpath, fpath);
 				break;
 			case YAFFS_OBJECT_TYPE_SPECIAL:
@@ -535,50 +536,50 @@ extract_image_mmap (unsigned char *addr, size_t size)
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
 
 	while (size >= bufsize) {
-		yaffs_ExtendedTags t;
-		yaffs_PackedTags1 pt1;
-		yaffs_PackedTags2 pt2;
+		struct yaffs_ext_tags t;
+		struct yaffs_packed_tags1 pt1;
+		struct yaffs_packed_tags2 pt2;
 
 		if (yaffs2_chunk_size > 512) {
-			memset(&pt2, 0xFF, sizeof(yaffs_PackedTags2));
+			memset(&pt2, 0xFF, sizeof(struct yaffs_packed_tags2));
 			spare2tags((unsigned char *)&pt2,
 				   addr + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags2));
+				   sizeof(struct yaffs_packed_tags2));
 
 			if (yaffs2_convert_endian) {
 				packedtags2_tagspart_endian_transform(&pt2);
 			}
 
-			yaffs_UnpackTags2TagsPart(&t, &pt2.t);
+			yaffs_unpack_tags2_tags_only(&t, &pt2.t);
 		}
 		else {
-			memset(&pt1, 0xFF, sizeof(yaffs_PackedTags1));
+			memset(&pt1, 0xFF, sizeof(struct yaffs_packed_tags1));
 			spare2tags((unsigned char *)&pt1,
 				   addr + yaffs2_chunk_size,
-				   sizeof(yaffs_PackedTags1));
+				   sizeof(struct yaffs_packed_tags1));
 
 			if (yaffs2_convert_endian) {
 				packedtags1_endian_transform(&pt1, 1);
 			}
 
-			yaffs_UnpackTags1(&t, &pt1);
+			yaffs_unpack_tags1(&t, &pt1);
 		}
 
 		/* new object */
-		if (t.chunkId == 0) {
+		if (t.chunk_id == 0) {
 			int retval = -1;
 			char fpath[PATH_MAX] = {0}, lpath[PATH_MAX] = {0};
-			yaffs_ObjectHeader oh;
+			struct yaffs_obj_hdr oh;
 			object_item_t obj;
 
-			memcpy(&oh, addr, sizeof(yaffs_ObjectHeader));
+			memcpy(&oh, addr, sizeof(struct yaffs_obj_hdr));
 			if (yaffs2_convert_endian) {
-				object_header_endian_transform(&oh);
+				objheader_endian_transform(&oh);
 			}
 
 			/* add object into object list */
-			obj.object = t.objectId;
-			obj.parent = oh.parentObjectId;
+			obj.object = t.obj_id;
+			obj.parent = oh.parent_obj_id;
 			strncpy(obj.name, oh.name, NAME_MAX);
 
 			if (strlen(obj.name) == 0 &&
@@ -604,7 +605,7 @@ extract_image_mmap (unsigned char *addr, size_t size)
 			switch (oh.type) {
 			case YAFFS_OBJECT_TYPE_FILE:
 				printf("create file: %s\n", fpath);
-				if (oh.fileSize > 0) {
+				if (oh.file_size > 0) {
 					addr += bufsize;
 					size -= bufsize;
 				}
@@ -622,7 +623,7 @@ extract_image_mmap (unsigned char *addr, size_t size)
 			case YAFFS_OBJECT_TYPE_HARDLINK:
 				printf("create hardlink: %s\n", fpath);
 				format_filepath(lpath, PATH_MAX,
-						oh.equivalentObjectId);
+						oh.equiv_id);
 				retval = link(lpath, fpath);
 				break;
 			case YAFFS_OBJECT_TYPE_SPECIAL:

@@ -28,6 +28,7 @@
  */
  
 #include <stdio.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -46,7 +47,7 @@
 
 /*-------------------------------------------------------------------------*/
 
-unsigned yaffs_traceMask = 0;
+unsigned yaffs_trace_mask = 0;
 
 /*-------------------------------------------------------------------------*/
 
@@ -155,9 +156,9 @@ object_list_search (object_item_t *object)
 /*-------------------------------------------------------------------------*/
 
 static void 
-packedtags1_ecc_calculate (yaffs_PackedTags1 *pt)
+packedtags1_ecc_calculate (struct yaffs_packed_tags1 *pt)
 {
-	unsigned char *b = ((yaffs_TagsUnion *)pt)->asBytes;
+	unsigned char *b = ((union yaffs_tags_union *)pt)->as_bytes;
 	unsigned i, j;
 	unsigned ecc = 0;
 	unsigned bit = 0;
@@ -236,23 +237,23 @@ yaffs1_write_chunk (unsigned bytes,
 		    unsigned chunk_id)
 {
 	ssize_t written;
-	yaffs_ExtendedTags et;
-	yaffs_PackedTags1 pt;
+	struct yaffs_ext_tags et;
+	struct yaffs_packed_tags1 pt;
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
 	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
 
 	/* prepare the spare (oob) first */
-	yaffs_InitialiseTags(&et);
+	yaffs_init_tags(&et);
 	
-	et.chunkId = chunk_id;
-//	et.serialNumber = 0;	// double check
-	et.serialNumber = 1;	// double check
-	et.byteCount = bytes;
-	et.objectId = object_id;
-	et.chunkDeleted = 0;	// double check
+	et.chunk_id = chunk_id;
+//	et.serial_number = 0;	// double check
+	et.serial_number = 1;	// double check
+	et.n_bytes = bytes;
+	et.obj_id = object_id;
+	et.is_deleted = 0;	// double check
 
-	memset(&pt, 0xFF, sizeof(yaffs_PackedTags1));
-	yaffs_PackTags1(&pt, &et);
+	memset(&pt, 0xFF, sizeof(struct yaffs_packed_tags1));
+	yaffs_pack_tags1(&pt, &et);
 
 	if (yaffs2_convert_endian) {
 		packedtags1_endian_transform(&pt, 0);
@@ -265,8 +266,10 @@ yaffs1_write_chunk (unsigned bytes,
 	/* write the spare (oob) into the buffer */
 	memset(spare, 0xFF, yaffs2_spare_size);
 	written = tags2spare(spare, (unsigned char *)&pt,
-			     sizeof(yaffs_PackedTags1) - sizeof(pt.shouldBeFF));
-	if (written != (sizeof(yaffs_PackedTags1) - sizeof(pt.shouldBeFF))) {
+			     sizeof(struct yaffs_packed_tags1) -
+			     sizeof(pt.should_be_ff));
+	if (written != (sizeof(struct yaffs_packed_tags1) -
+			sizeof(pt.should_be_ff))) {
 		return -1;
 	}
 
@@ -289,32 +292,32 @@ yaffs2_write_chunk (unsigned bytes,
 		    unsigned chunk_id)
 {
 	ssize_t written;
-	yaffs_ExtendedTags et;
-	yaffs_PackedTags2 pt;
+	struct yaffs_ext_tags et;
+	struct yaffs_packed_tags2 pt;
 	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
 	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
 
 	/* prepare the spare (oob) first */
-	yaffs_InitialiseTags(&et);
+	yaffs_init_tags(&et);
 	
-	et.chunkId = chunk_id;
-//	et.serialNumber = 0;	// double check
-	et.serialNumber = 1;	// double check
-	et.byteCount = bytes;
-	et.objectId = object_id;
-	et.chunkUsed = 1;
-	et.sequenceNumber = YAFFS_LOWEST_SEQUENCE_NUMBER;
+	et.chunk_id = chunk_id;
+//	et.serial_number = 0;	// double check
+	et.serial_number = 1;	// double check
+	et.n_bytes = bytes;
+	et.obj_id = object_id;
+	et.chunk_used = 1;
+	et.seq_number = YAFFS_LOWEST_SEQUENCE_NUMBER;
 
-	memset(&pt, 0xFF, sizeof(yaffs_PackedTags2));
-	yaffs_PackTags2TagsPart(&pt.t, &et);
+	memset(&pt, 0xFF, sizeof(struct yaffs_packed_tags2));
+	yaffs_pack_tags2_tags_only(&pt.t, &et);
 
 	if (yaffs2_convert_endian) {
 		packedtags2_tagspart_endian_transform(&pt);
 	}
 
 #ifndef YAFFS_IGNORE_TAGS_ECC
-	yaffs_ECCCalculateOther((unsigned char *)&pt.t,
-				sizeof(yaffs_PackedTags2TagsPart),
+	yaffs_ecc_calc_other((unsigned char *)&pt.t,
+				sizeof(struct yaffs_packed_tags2_tags_only),
 				&pt.ecc);
 	if (yaffs2_convert_endian) {
 		packedtags2_eccother_endian_transform(&pt);
@@ -324,8 +327,8 @@ yaffs2_write_chunk (unsigned bytes,
 	/* write the spare (oob) into the buffer */
 	memset(spare, 0xFF, yaffs2_spare_size);
 	written = tags2spare(spare, (unsigned char *)&pt,
-			     sizeof(yaffs_PackedTags2));
-	if (written != sizeof(yaffs_PackedTags2)) {
+			     sizeof(struct yaffs_packed_tags2));
+	if (written != sizeof(struct yaffs_packed_tags2)) {
 		return -1;
 	}
 
@@ -345,19 +348,19 @@ yaffs2_write_chunk (unsigned bytes,
 static int 
 write_object_header (const char *name,
 		     struct stat *s,
-		     yaffs_ObjectType type,
+		     enum yaffs_obj_type type,
 		     const char *alias,
 		     unsigned object_id,
 		     unsigned parent_id,
 		     unsigned equivalent_id)
 {
 	int retval;
-	yaffs_ObjectHeader oh;
+	struct yaffs_obj_hdr oh;
 
-	memset(&oh, 0xFF, sizeof(yaffs_ObjectHeader));
+	memset(&oh, 0xFF, sizeof(struct yaffs_obj_hdr));
 
 	oh.type = type;
-	oh.parentObjectId = parent_id;
+	oh.parent_obj_id = parent_id;
 	strncpy(oh.name, name, YAFFS_MAX_NAME_LENGTH);
 	
 	if(type != YAFFS_OBJECT_TYPE_HARDLINK) {
@@ -372,10 +375,10 @@ write_object_header (const char *name,
 
 	switch (type) {
 	case YAFFS_OBJECT_TYPE_FILE:
-		oh.fileSize = s->st_size;
+		oh.file_size = s->st_size;
 		break;
 	case YAFFS_OBJECT_TYPE_HARDLINK:
-		oh.equivalentObjectId = equivalent_id;
+		oh.equiv_id = equivalent_id;
 		break;
 	case YAFFS_OBJECT_TYPE_SYMLINK:
 		strncpy(oh.alias, alias, YAFFS_MAX_ALIAS_LENGTH);
@@ -385,12 +388,12 @@ write_object_header (const char *name,
 	}
 
 	if (yaffs2_convert_endian) {
- 	   	object_header_endian_transform(&oh);
+ 	   	objheader_endian_transform(&oh);
 	}
 
 	/* copy header into the buffer */
 	memset(yaffs2_data_buffer, 0xFF, yaffs2_chunk_size);
-	memcpy(yaffs2_data_buffer, &oh, sizeof(yaffs_ObjectHeader));
+	memcpy(yaffs2_data_buffer, &oh, sizeof(struct yaffs_obj_hdr));
 
 	/* write buffer */
 	retval = write_chunk(0xFFFF, object_id, 0);
@@ -485,7 +488,7 @@ parse_directory (unsigned parent, const char *path)
 		{
 			unsigned id;
 			struct object_item obj;
-			yaffs_ObjectType ftype;
+			enum yaffs_obj_type ftype;
 
 			id = ++yaffs2_current_objects;
 			
@@ -584,12 +587,12 @@ parse_directory (unsigned parent, const char *path)
 error:
 		if (retval) {
 			fprintf(stderr, "error while parsing %s\n", fpath);
-			closedir(path);
+			closedir(dir);
 			return -1;
 		}
 	}
 
-	closedir(path);
+	closedir(dir);
 
 	return 0;
 }

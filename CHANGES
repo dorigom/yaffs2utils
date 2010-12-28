@@ -1,3 +1,27 @@
+2010-12-27	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.9
+-------------
+
+	* mkyaffs2
+	- Fix #5: It cannot be compiled with the latest yaffs2.
+	- Fix #6: mkyaffs2 always crashes.
+
+	* unyaffs2
+	- Fix #5: It cannot be compuled with the latest yaffs2.
+
+	* others:
+	- Branch files required by yaffs2utils from the official YAFFS2 source.
+	- Update README.
+	- Update Makefile.
+
+	* NOTE: 
+	- This version branches the necessary files from the YAFFS2 official
+	  because of the issue about the inconstant naming rules in the YAFFS2
+	  package. This apporach will be used untils the official YAFFS2 has a
+	  stable release, or it is integrated into the Linux kernel.
+
+
 2010-09-20	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.8

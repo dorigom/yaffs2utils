@@ -22,16 +22,14 @@ Making a yaffs1 image to be ran properly is NOT verified, since I don't have an
 embedded system device with the old NAND flash (512k page). I will be glad if
 someone can help me to verify the integrity to make and extract a yaffs1 image.
 
+* Project Page
+
+	http://code.google.com/p/yaffs2utils/
+
 
 HOWTO
 -----
-First, you have to download the yaffs2 source from the yaffs2.net.
-
-	http://yaffs.net/node/346
-
-The macro "YAFFS2DIR" in the Makefile in the top directory of the yaffs2utils
-also has to be modified to the path of yaffs2 source before you build this
-package. Finally, building the yaffs2utils by "make" and enjoying it.
+Building the source by "make", then enjoying the "mkyaffs2" and "unyaffs2".
 
 
 Usage
@@ -50,9 +48,29 @@ ro recode data into the flash (with oob option), such as:
 	nandwrite -a -o /dev/mtd${MTDNUM} ${YAFFS2IMAGE}
 
 
+LICENSE
+-------
+Except files under "src/yaffs2", yaffs2utils is published as GNU GPL version 2.
+Files under "src/yaffs2" are branched from the official YAFFS2 and their license
+are announced in their header.
+
+
+
 TODO
 ----
 1. Verify the implementation for yaffs1 images.
+2. Support various OOB layout. (Ongoing)
+3. Progress bar displayed while creating or extracting the image. (Ongoing)
+4. Extract the runtime image dumpped directly from the NAND flash.
+
+
+NOTE
+----
+Files under "src/yaffs2" is branched from the official YAFFS2 dated 20101227,
+because of the compiling issues about the inconstant naming rules in the
+official YAFFS2 source. These files are required by the current yaffs2utils.
+I will continue updating these files untils the oficial source is integrated
+into the Linux kernel or it has a stable release.
 
 
 =============

@@ -18,18 +18,17 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-CFLAGS		=  -I. -O2 -Wall -DCONFIG_YAFFS_UTIL
-CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes -Wmissing-declarations
-CFLAGS		+= -Wmissing-prototypes -Wredundant-decls -Wnested-externs -Winline
-
-ifneq ($(YAFFS2DIR), )
-	CFLAGS	+= -I$(YAFFS2DIR)
-endif
+CFLAGS		=  -I. -I./yaffs2 -O2 -Wall
+CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes \
+		   -Wmissing-declarations -Wmissing-prototypes -Wredundant-decls \
+		   -Wnested-externs -Winline
 
 CFLAGS		+= -D__HAVE_MMAP
 
-COMMONLINKS	= yaffs_ecc.c yaffs_packedtags1.c yaffs_packedtags2.c yaffs_tagsvalidity.c
-COMMONOBJS	= $(COMMONLINKS:.c=.o)
+YAFFS2SRCS	= yaffs2/yaffs_hweight.c yaffs2/yaffs_ecc.c \
+		  yaffs2/yaffs_packedtags1.c yaffs2/yaffs_packedtags2.c \
+		  yaffs2/yaffs_tagsvalidity.c 
+YAFFS2OBJS	= $(YAFFS2SRCS:.c=.o)
 
 LIBSRCS		= yaffs2utils_io.c yaffs2utils_endian.c
 LIBOBJS		= $(LIBSRCS:.c=.o)
@@ -40,32 +39,18 @@ MKYAFFS2OBJS	= $(MKYAFFS2SRCS:.c=.o)
 UNYAFFS2SRCS	= unyaffs2.c
 UNYAFFS2OBJS	= $(UNYAFFS2SRCS:.c=.o)
 
+OBJS		= $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS) $(UNYAFFS2OBJS) 
 
 all: mkyaffs2 unyaffs2
 
-$(COMMONLINKS):
-	ln -sf $(YAFFS2DIR)/$@ $@
+mkyaffs2: $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
 
-$(COMMONOBJS): %.o: %.c
-	$(CC) -c $(CFLAGS) $< -o $@
-
-$(LIBOBJS): %.o: %.c
-	$(CC) -c $(CFLAGS) $< -o $@
-
-$(MKYAFFS2OBJS): %o: %c
-	$(CC) -c $(CFLAGS) $< -o $@
-
-$(UNYAFFS2OBJS): %o: %c
-	$(CC) -c $(CFLAGS) $< -o $@
-
-mkyaffs2: $(COMMONOBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
-	$(CC) -o $@ $(COMMONOBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
-
-unyaffs2: $(COMMONOBJS) $(LIBOBJS) $(UNYAFFS2OBJS)
-	$(CC) -o $@ $(COMMONOBJS) $(LIBOBJS) $(UNYAFFS2OBJS)
+unyaffs2: $(YAFFS2OBJS) $(LIBOBJS) $(UNYAFFS2OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(UNYAFFS2OBJS)
 
 clean:
-	rm -rf $(COMMONLINKS) $(COMMONOBJS) $(LIBOBJS) \
+	rm -rf $(YAFFS2OBJS) $(LIBOBJS) \
 	       $(MKYAFFS2OBJS) $(UNYAFFS2OBJS)
 
 distclean: clean
