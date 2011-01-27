@@ -720,8 +720,6 @@ main (int argc, char* argv[])
 			show_usage();
 			return 0;
 		default:
-			fprintf(stderr, "unkown option: %s\n\n",
-				argv[option_index]);
 			show_usage();
 			return -1;
 		}

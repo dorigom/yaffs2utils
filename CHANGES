@@ -1,5 +1,17 @@
 2010-12-27	Luen-Yung Lin <penguin.lin@gmail.com>
 
+Version 0.1.10
+--------------
+
+	* mkyaffs2
+	- Fix #9: Unknown options cause the program to output garbage.
+
+	* unyaffs2
+	- Fix #9: Unknown options cause the program to output garbage.
+
+
+2010-12-27	Luen-Yung Lin <penguin.lin@gmail.com>
+
 Version 0.1.9
 -------------
 
