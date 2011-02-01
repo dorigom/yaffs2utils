@@ -1,6 +1,6 @@
 /*
  * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image.
- * Copyright (C) 2010 Luen-Yung Lin <penguin.lin@gmail.com>
+ * Copyright (C) 2010-2011 Luen-Yung Lin <penguin.lin@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as 

@@ -1,4 +1,15 @@
-2010-12-27	Luen-Yung Lin <penguin.lin@gmail.com>
+2010-02-01	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.11
+--------------
+
+	* others
+	- Merge the latest YAFFS2 to 20110201 from the official release.
+	- Update copyright information.
+	- Remove root Makefile and update Makefile in /src
+
+
+2010-01-26	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.10
 --------------

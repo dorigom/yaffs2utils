@@ -2,7 +2,7 @@
 # Makefile for yaffs2utils.
 #
 # yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image
-# Copyright (C) 2010 Luen-Yung Lin <penguin.lin@gmail.com>
+# Copyright (C) 2010-2011 Luen-Yung Lin <penguin.lin@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -17,6 +17,9 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+
+CROSS		=
+CC		= $(CROSS)gcc
 
 CFLAGS		=  -I. -I./yaffs2 -O2 -Wall
 CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes \

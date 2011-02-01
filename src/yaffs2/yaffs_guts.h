@@ -1,7 +1,7 @@
 /*
  * YAFFS: Yet another Flash File System . A NAND-flash specific file system.
  *
- * Copyright (C) 2002-2010 Aleph One Ltd.
+ * Copyright (C) 2002-2011 Aleph One Ltd.
  *   for Toby Churchill Ltd and Brightstar Engineering
  *
  * Created by Charles Manning <charles@aleph1.co.uk>
@@ -114,7 +114,6 @@ struct yaffs_ext_tags {
 	unsigned extra_equiv_id;	/* Equivalent object Id if it is a hard link */
 
 	unsigned validity1;
-
 };
 
 struct yaffs_obj_hdr {
