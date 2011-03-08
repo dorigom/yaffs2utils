@@ -1,3 +1,14 @@
+2010-03-09	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.1.12
+--------------
+
+	* others
+	- Merge the latest YAFFS2 to 20110201 from the official release.
+	- Remove yaffs_tagsvalidity related codes.
+	- Modify all hex values to lower case.
+
+
 2010-02-01	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.11

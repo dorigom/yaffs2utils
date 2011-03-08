@@ -18,7 +18,7 @@
 
 #include "yportenv.h"
 
-#define YAFFS_MAX_CHUNK_ID		0x000FFFFF
+#define YAFFS_MAX_CHUNK_ID		0x000fffff
 
 #define YAFFS_NOBJECT_BUCKETS		256
 
@@ -49,7 +49,7 @@
  * and is a larger number than the lifetime of a 2GB device.
  */
 #define YAFFS_LOWEST_SEQUENCE_NUMBER	0x00001000
-#define YAFFS_HIGHEST_SEQUENCE_NUMBER	0xEFFFFF00
+#define YAFFS_HIGHEST_SEQUENCE_NUMBER	0xefffff00
 
 /* -------------------------------------------------------------------------- */
 
@@ -84,10 +84,9 @@ enum yaffs_obj_type {
 };
 
 struct yaffs_ext_tags {
-	unsigned validity0;
 	unsigned chunk_used;	/* Status of the chunk: used or unused */
-	unsigned obj_id;	/* If 0 then this is not part of an object (unused) */
-	unsigned chunk_id;	/* If 0 then this is a header, else a data chunk */
+	unsigned obj_id;	/* If 0 this is unused */
+	unsigned chunk_id;	/* If 0 this is a header, else a data chunk */
 	unsigned n_bytes;	/* Only valid for data chunks */
 
 	/* The following stuff only has meaning when we read */
@@ -103,7 +102,7 @@ struct yaffs_ext_tags {
 
 	/* Extra info if this is an object header (YAFFS2 only) */
 
-	unsigned extra_available;	/* There is extra info available if this is not zero */
+	unsigned extra_available;	/* Extra info available if not zero */
 	unsigned extra_parent_id;	/* The parent object */
 	unsigned extra_is_shrink;	/* Is it a shrink header? */
 	unsigned extra_shadows;		/* Does this shadow another object? */
@@ -112,8 +111,6 @@ struct yaffs_ext_tags {
 
 	unsigned extra_length;		/* Length if it is a file */
 	unsigned extra_equiv_id;	/* Equivalent object Id if it is a hard link */
-
-	unsigned validity1;
 };
 
 struct yaffs_obj_hdr {
@@ -124,7 +121,7 @@ struct yaffs_obj_hdr {
 	u16 sum_no_longer_used;	/* checksum of name. No longer used */
 	YCHAR name[YAFFS_MAX_NAME_LENGTH + 1];
 
-	/* The following apply to directories, files, symlinks - not hard links */
+	/* The following apply to all object types except for hard links */
 	u32 yst_mode;		/* protection */
 
 	u32 yst_uid;
@@ -142,7 +139,7 @@ struct yaffs_obj_hdr {
 	/* Alias is for symlinks only. */
 	YCHAR alias[YAFFS_MAX_ALIAS_LENGTH + 1];
 
-	u32 yst_rdev;		/* device stuff for block and char devices (major/min) */
+	u32 yst_rdev;		/* stuff for block and char devices (major/min) */
 
 	u32 win_ctime[2];
 	u32 win_atime[2];
@@ -154,7 +151,7 @@ struct yaffs_obj_hdr {
 	u32 reserved[2];
 	int shadows_obj;	/* This object header shadows the specified object if > 0 */
 
-	/* is_shrink applies to object headers written when we shrink the file (ie resize) */
+	/* is_shrink applies to object headers written when wemake a hole. */
 	u32 is_shrink;
 };
 

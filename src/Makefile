@@ -29,8 +29,7 @@ CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes \
 CFLAGS		+= -D__HAVE_MMAP
 
 YAFFS2SRCS	= yaffs2/yaffs_hweight.c yaffs2/yaffs_ecc.c \
-		  yaffs2/yaffs_packedtags1.c yaffs2/yaffs_packedtags2.c \
-		  yaffs2/yaffs_tagsvalidity.c 
+		  yaffs2/yaffs_packedtags1.c yaffs2/yaffs_packedtags2.c
 YAFFS2OBJS	= $(YAFFS2SRCS:.c=.o)
 
 LIBSRCS		= yaffs2utils_io.c yaffs2utils_endian.c

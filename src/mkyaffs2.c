@@ -39,7 +39,6 @@
 
 #include "yaffs_packedtags1.h"
 #include "yaffs_packedtags2.h"
-#include "yaffs_tagsvalidity.h"
 
 #include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
@@ -243,7 +242,7 @@ yaffs1_write_chunk (unsigned bytes,
 	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
 
 	/* prepare the spare (oob) first */
-	yaffs_init_tags(&et);
+	memset(&et, 0, sizeof(struct yaffs_ext_tags));
 	
 	et.chunk_id = chunk_id;
 //	et.serial_number = 0;	// double check
@@ -298,7 +297,7 @@ yaffs2_write_chunk (unsigned bytes,
 	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
 
 	/* prepare the spare (oob) first */
-	yaffs_init_tags(&et);
+	memset(&et, 0, sizeof(struct yaffs_ext_tags));
 	
 	et.chunk_id = chunk_id;
 //	et.serial_number = 0;	// double check

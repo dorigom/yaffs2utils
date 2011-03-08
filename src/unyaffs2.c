@@ -39,7 +39,6 @@
 
 #include "yaffs_packedtags1.h"
 #include "yaffs_packedtags2.h"
-#include "yaffs_tagsvalidity.h"
 
 #include "yaffs2utils.h"
 #include "yaffs2utils_io.h"

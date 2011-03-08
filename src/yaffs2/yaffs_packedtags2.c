@@ -16,7 +16,6 @@
 #include "yaffs_packedtags2.h"
 #include "yportenv.h"
 #include "yaffs_trace.h"
-#include "yaffs_tagsvalidity.h"
 
 /* This code packs a set of extended tags into a binary structure for
  * NAND storage
@@ -34,11 +33,11 @@
 #define EXTRA_SHADOWS_FLAG	0x20000000
 #define EXTRA_SPARE_FLAGS	0x10000000
 
-#define ALL_EXTRA_FLAGS		0xF0000000
+#define ALL_EXTRA_FLAGS		0xf0000000
 
 /* Also, the top 4 bits of the object Id are set to the object type. */
 #define EXTRA_OBJECT_TYPE_SHIFT (28)
-#define EXTRA_OBJECT_TYPE_MASK  ((0x0F) << EXTRA_OBJECT_TYPE_SHIFT)
+#define EXTRA_OBJECT_TYPE_MASK  ((0x0f) << EXTRA_OBJECT_TYPE_SHIFT)
 
 static void yaffs_dump_packed_tags2_tags_only(
 				const struct yaffs_packed_tags2_tags_only *ptt)
@@ -110,9 +109,8 @@ void yaffs_unpack_tags2_tags_only(struct yaffs_ext_tags *t,
 				  struct yaffs_packed_tags2_tags_only *ptt)
 {
 	memset(t, 0, sizeof(struct yaffs_ext_tags));
-	yaffs_init_tags(t);
 
-	if (ptt->seq_number == 0xFFFFFFFF)
+	if (ptt->seq_number == 0xffffffff)
 		return;
 
 	t->block_bad = 0;
@@ -150,7 +148,7 @@ void yaffs_unpack_tags2(struct yaffs_ext_tags *t, struct yaffs_packed_tags2 *pt,
 {
 	enum yaffs_ecc_result ecc_result = YAFFS_ECC_RESULT_NO_ERROR;
 
-	if (pt->t.seq_number != 0xFFFFFFFF && tags_ecc) {
+	if (pt->t.seq_number != 0xffffffff && tags_ecc) {
 		/* Chunk is in use and we need to do ECC */
 
 		struct yaffs_ecc_other ecc;
