@@ -344,7 +344,8 @@ extract_file_mmap (unsigned char **addr,
 	}
 
 	/* now mmap */
-	outaddr = mmap(NULL, fsize, PROT_WRITE, MAP_SHARED, outfd, 0);
+	outaddr = mmap(NULL, fsize, PROT_WRITE | PROT_READ,
+		       MAP_SHARED, outfd, 0);
 	if (outaddr == NULL) {
 		fprintf(stderr, "cannot mmap the file %s\n", fpath);
 		goto out;
