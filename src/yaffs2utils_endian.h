@@ -19,7 +19,21 @@
 #ifndef _YAFFS2UTILS_ENDIAN_H
 #define _YAFFS2UTILS_ENDIAN_H
 
-void objheader_endian_transform (struct yaffs_obj_hdr *oh);
+#ifdef __MACH__
+#include <libkern/OSByteOrder.h>
+#else
+#include <asm/byteorder.h>
+#endif
+
+
+#define ENDIAN_SWAP_32(x)       ((((x) & 0x000000ff) << 24) | \
+				(((x) & 0x0000ff00) << 8) | \
+				(((x) & 0x00ff0000) >> 8) | \
+				(((x) & 0xff000000) >> 24))
+#define ENDIAN_SWAP_16(x)       ((((x) & 0x00ff) << 8) | \
+				(((x) & 0xff00) >> 8))
+
+void oh_endian_transform (struct yaffs_obj_hdr *oh);
 void packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse);
 void packedtags2_tagspart_endian_transform (struct yaffs_packed_tags2 *t);
 void packedtags2_eccother_endian_transform (struct yaffs_packed_tags2 *t);

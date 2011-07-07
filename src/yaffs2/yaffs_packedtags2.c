@@ -11,10 +11,11 @@
  * published by the Free Software Foundation.
  */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "yaffs_packedtags2.h"
-#include "yportenv.h"
+#include "yaffs_utils.h"
 #include "yaffs_trace.h"
 
 /* This code packs a set of extended tags into a binary structure for

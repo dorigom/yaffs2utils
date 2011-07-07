@@ -1,4 +1,4 @@
-/*
+/* 
  * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image.
  * Copyright (C) 2010-2011 Luen-Yung Lin <penguin.lin@gmail.com>
  *
@@ -16,51 +16,23 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <errno.h>
-#include <unistd.h>
+#ifndef _YAFFS2UTILS_MTD_H_
+#define _YAFFS2UTILS_MTD_H_
 
-#include "yaffs2utils_io.h"
+#define MTD_MAX_OOBFREE_ENTRIES		8
 
-/*-------------------------------------------------------------------------*/
+struct nand_oobfree {
+        u_int32_t offset;
+        u_int32_t length;
+};
 
-ssize_t
-safe_read (int fd, void *buf, size_t count)
-{
-	ssize_t r;
-	size_t reads = 0;
+struct nand_ecclayout {
+        u_int32_t eccbytes;
+        u_int32_t eccpos[64];
+        u_int32_t oobavail;
+        struct nand_oobfree oobfree[MTD_MAX_OOBFREE_ENTRIES];
+};
 
-	while (reads < count &&
-	       (r = read(fd, (char *)buf + reads, count - reads)) != 0)
-	{
-		if (r < 0) {
-			if (errno == EINTR)
-				continue;
+#define ECCGETLAYOUT    _IOR('M', 17, struct nand_ecclayout)
 
-			return -1;
-		}
-		reads += r;
-	}
-
-	return reads;
-}
-
-ssize_t
-safe_write (int fd, const void *buf, size_t count)
-{
-	ssize_t w;
-	size_t written = 0;
-
-	while (written < count &&
-	       (w = write(fd, (char *)buf + written, count - written)) != 0)
-	{
-		if (w < 0) {
-			if (errno == EINTR)
-				continue;
-
-			return -1;
-		}
-		written += w;
-	}
-
-	return written;
-}
+#endif

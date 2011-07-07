@@ -1,4 +1,61 @@
-2010-04-08      Luen-Yung Lin <penguin.lin@gmail.com>
+2011-07-07	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.0
+-------------
+
+	* mkyaffs2
+	- Fix #4: Progress Bar Requirement.
+	  - The 2-pass operation is applied to implment this feature. It will
+	    scan the directory structure to build a filesystem tree first; then
+	    making an image based on this tree.
+	- Fix #7: Support far various OOB layout is lacking.
+	  - An option "-o (oobimg)" is added to support the various OOB layout.
+	    The OOB layout can be available by the tool "unspare2", and it will
+	    be loaded into the specfied "nand_ecclayout" structure simply
+	    without any verification.
+	- Skip root object in yaffs2 image.
+	  - From this version, the root object will NOT be written into the
+	    yaffs2 image.
+	- Add an option "-v (verbose)" to verbose details of making an image.
+	  - By default, a progress bar will be displayed for the current status.
+	    If the option "-v" is specified, a list of objects will be shown
+	    instead of a progress bar.
+	- Fix coding style typos.
+
+	* unyaffs2
+	- Fix #4: Progress Bar Requirement.
+	  - As mkyaffs2, the 2-pass operation is appled. It will scan the full
+	    image to build a filesystem tree based on their object id; and
+	    extracting the image contents based on the tree. Finally, the files
+	    attributes will also be restored.
+	- Fix #7: Support far various OOB layout is lacking.
+	  - An option "-o (oobimg)" is added to support the various OOB layout.
+	    The OOB layout can be available by the tool "unspare2", and it will
+	    be loaded into the specfied "nand_ecclayout" structure simply
+	    without any verification.
+	- Fix #8: Extract Only a Selection of Files.
+	  - An option "-f (file)" is added to support extracting only the
+	    selection of files. 
+	- Skip root object in yaffs2 image.
+	  - A root object (if it is existed) in the image will be skipped, 
+	    and the pseudo root object will be used while extracting the image.
+	- Add an option "-v (verbose)" to verbose details of making an image.
+	  - By default, a progress bar will be displayed for the current status.
+	    If the option "-v" is specified, a list of objects will be shown
+	    instead of a progress bar.
+	- Restore the attribute of files.
+	- Fix coding style typos.
+
+	* unspare2 (NEW)
+	- A tool to dump the OOB layout from the NAND device.
+
+	* others:
+	- Update "README".
+	- Use NAND ECC layout information from Linux kernel as default.
+	- Merge the latest YAFFS2 to 20110628 from the official release.
+
+
+2010-04-08	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.1.13
 --------------

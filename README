@@ -6,6 +6,7 @@ image for Linux.
 Currently, it inclueds the following tools:
 (1) mkyaffs2: making a yaffs2 (yaffs1) image 
 (2) unyaffs2: extract a yaffs2 (yaffs1) image made by mkyaffs2.
+(3) unspare2: extract the spare(oob) layout from the NAND device.
 
 This project is developed under the Debian Linux 5 (code Lenny). It can make a
 yaffs2 image to be ran under my embedded system (Linux 2.6.20), and extract a
@@ -29,23 +30,34 @@ someone can help me to verify the integrity to make and extract a yaffs1 image.
 
 HOWTO
 -----
-Building the source by "make", then enjoying the "mkyaffs2" and "unyaffs2".
+Building the source by "make", then enjoying them.
 
 
 Usage
 -----
 * mkyaffs2
 
-	./mkyaffs2 [-h] [-e] [-p pagesize] dirname imgfile
+	./mkyaffs2 [-h] [-e] [-p pagesize] [-o oobimg] dirname imgfile
 
 * unyaffs2
 
-	./unyaffs2 [-h] [-e] [-p pagesize] imgfile dirname
+	./unyaffs2 [-h] [-e] [-p pagesize] [-o oobimg] [-f file] imgfile dirname
+
+* unspare2
+
+	./unspare2 [-h] [-e] devfile imgfile
 
 After making a yaffs2 image, the tool "nandwrite" in the mtd-utils can be used
-ro recode data into the flash (with oob option), such as:
+to recode data into the flash (with oob option), such as:
 
 	nandwrite -a -o /dev/mtd${MTDNUM} ${YAFFS2IMAGE}
+
+If the oob layout is differed from the Linux default, the tool "unspare2" can
+be used to extract the oob layout from the NAND device. If the endian is 
+different from your building system, the option "-e" is required while executing
+the "unspare2" on the targets. Finally, by the option '-o' to specify the oob
+image while using the "mkyaffs2/unyaffs2" can create/extract the YAFFS image
+with the various oob layout for the different NAND devices.
 
 
 LICENSE
@@ -55,13 +67,10 @@ Files under "src/yaffs2" are branched from the official YAFFS2 and their license
 are announced in their header.
 
 
-
 TODO
 ----
 1. Verify the implementation for yaffs1 images.
-2. Support various OOB layout. (Ongoing)
-3. Progress bar displayed while creating or extracting the image. (Ongoing)
-4. Extract the runtime image dumpped directly from the NAND flash.
+2. Extract the runtime image dumpped directly from the NAND flash.
 
 
 NOTE
@@ -71,6 +80,11 @@ because of the compiling issues about the inconstant naming rules in the
 official YAFFS2 source. These files are required by the current yaffs2utils.
 I will continue updating these files untils the oficial source is integrated
 into the Linux kernel or it has a stable release.
+
+
+SPECIAL THANKS
+--------------
+1. Stijn Devriendt <HIGHGuY@gmail.com>
 
 
 =============

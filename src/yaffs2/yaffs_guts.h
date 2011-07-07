@@ -16,14 +16,14 @@
 #ifndef __YAFFS_GUTS_H__
 #define __YAFFS_GUTS_H__
 
-#include "yportenv.h"
+#include "yaffs_utils.h"
 
 #define YAFFS_MAX_CHUNK_ID		0x000fffff
 
 #define YAFFS_NOBJECT_BUCKETS		256
 
 #define YAFFS_OBJECT_SPACE		0x40000
-#define YAFFS_MAX_OBJECT_ID		(YAFFS_OBJECT_SPACE -1)
+#define YAFFS_MAX_OBJECT_ID		(YAFFS_OBJECT_SPACE - 1)
 
 #ifdef CONFIG_YAFFS_UNICODE
 #define YAFFS_MAX_NAME_LENGTH		127

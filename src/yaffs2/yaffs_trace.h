@@ -16,9 +16,6 @@
 #ifndef __YTRACE_H__
 #define __YTRACE_H__
 
-extern unsigned int yaffs_trace_mask;
-extern unsigned int yaffs_wr_attempts;
-
 /*
  * Tracing flags.
  * The flags masked in YAFFS_TRACE_ALWAYS are always traced.

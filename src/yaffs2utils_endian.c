@@ -18,7 +18,6 @@
  
 #include <stdio.h>
 #include <string.h>
-#include <asm/byteorder.h>
 
 #include "yaffs_packedtags1.h"
 #include "yaffs_packedtags2.h"
@@ -27,17 +26,8 @@
 
 /*-------------------------------------------------------------------------*/
 
-#define ENDIAN_SWAP_32(x)	((((x) & 0x000000ff) << 24) | \
-				(((x) & 0x0000ff00) << 8) | \
-				(((x) & 0x00ff0000) >> 8) | \
-				(((x) & 0xff000000) >> 24))
-#define ENDIAN_SWAP_16(x)	((((x) & 0x00ff) << 8) | \
-				(((x) & 0xff00) >> 8))
-
-/*-------------------------------------------------------------------------*/
-
 void 
-objheader_endian_transform (struct yaffs_obj_hdr *oh)
+oh_endian_transform (struct yaffs_obj_hdr *oh)
 {
 	oh->type = ENDIAN_SWAP_32(oh->type); // GCC makes enums 32 bits.
 	oh->parent_obj_id = ENDIAN_SWAP_32(oh->parent_obj_id); // int
@@ -122,7 +112,7 @@ packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse)
 		tb[1] = ((pb[1] & 0xf0) >> 4) |
 			((pb[0] & 0x0f) << 4);
 		tb[2] = ((pb[0] & 0xf0) >> 4) |
-			((pb[2] & 0x0C) << 2) |
+			((pb[2] & 0x0c) << 2) |
 			((pb[3] & 0x03) << 6);
 		tb[3] = ((pb[3] & 0xfc) >> 2) |
 			((pb[2] & 0x03) << 6);

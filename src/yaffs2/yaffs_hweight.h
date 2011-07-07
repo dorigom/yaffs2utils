@@ -16,7 +16,7 @@
 #ifndef __YAFFS_HWEIGHT_H__
 #define __YAFFS_HWEIGHT_H__
 
-#include "yportenv.h"
+#include "yaffs_utils.h"
 
 int yaffs_hweight8(u8 x);
 int yaffs_hweight32(u32 x);

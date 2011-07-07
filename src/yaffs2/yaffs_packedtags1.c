@@ -14,7 +14,7 @@
 #include <string.h>
 
 #include "yaffs_packedtags1.h"
-#include "yportenv.h"
+#include "yaffs_utils.h"
 
 static const u8 all_ff[20] = {
 	0xff, 0xff, 0xff, 0xff,

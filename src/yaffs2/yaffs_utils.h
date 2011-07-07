@@ -13,26 +13,16 @@
  * Note: Only YAFFS headers are LGPL, YAFFS C code is covered by GPL.
  */
 
-#ifndef __YPORTENV_H__
-#define __YPORTENV_H__
+#ifndef __YAFFS_UTILS_H__
+#define __YAFFS_UTILS_H__
 
 /* Definition of types */
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned u32;
 
-#include <stdio.h>
+#define YCHAR	char
 
-#include "yaffs_hweight.h"
-
-#define YCHAR char
-
-#define hweight8(x)	yaffs_hweight8(x)
-#define hweight32(x)	yaffs_hweight32(x)
-
-#define yaffs_trace(msk, fmt, ...) do { \
-	if (yaffs_trace_mask & (msk)) \
-		printf("yaffs: " fmt "\n", ##__VA_ARGS__); \
-} while (0)
+#define yaffs_trace(...) do {} while (0)
 
 #endif

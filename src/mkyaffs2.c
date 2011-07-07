@@ -15,170 +15,272 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-/*
- * mkyaffs2.c 
- *
- * Makes a YAFFS2 file system image that can be used to load up a file system.
- * Uses default Linux MTD layout - change if you need something different.
- *
- * This source is originally ported from the yaffs2 official cvs 
- * <http://yaffs.net/node/346>, and modified by Luen-Yung Lin for yaffs2utils.
- *
- * Luen-Yung Lin <penguin.lin@gmail.com>
- */
  
 #include <stdio.h>
-#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <dirent.h>
 #include <getopt.h>
+#include <string.h>
+#include <limits.h>
+#include <libgen.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "yaffs_trace.h"
 #include "yaffs_packedtags1.h"
 #include "yaffs_packedtags2.h"
 
 #include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
+#include "yaffs2utils_ecc.h"
+#include "yaffs2utils_list.h"
 #include "yaffs2utils_endian.h"
+#include "yaffs2utils_progress.h"
 
-/*-------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 
-unsigned yaffs_trace_mask = 0;
+#define MKYAFFS2_OBJTABLE_SIZE	YAFFS_NOBJECT_BUCKETS
 
-/*-------------------------------------------------------------------------*/
+#define MKYAFFS2_FLAGS_NONROOT	0x01
+#define MKYAFFS2_FLAGS_YAFFS1	0x02
+#define MKYAFFS2_FLAGS_ENDIAN	0x04
+#define MKYAFFS2_FLAGS_VERBOSE	0x08
 
-typedef struct object_item {
+#define MKYAFFS2_ISYAFFS1	(mkyaffs2_flags & MKYAFFS2_FLAGS_YAFFS1)
+#define MKYAFFS2_ISENDIAN	(mkyaffs2_flags & MKYAFFS2_FLAGS_ENDIAN)
+#define MKYAFFS2_ISVERBOSE	(mkyaffs2_flags & MKYAFFS2_FLAGS_VERBOSE)
+
+#define MKYAFFS2_PRINT(s, args...)	fprintf(stdout, s, ##args)
+
+#define MKYAFFS2_ERROR(s, args...)	fprintf(stderr, s, ##args)
+
+#define MKYAFFS2_WARN(s, args...)	MKYAFFS2_ERROR(s, ##args)
+
+#define MKYAFFS2_HELP(s, args...)	MKYAFFS2_ERROR(s, ##args)
+
+#ifdef _MKYAFFS2_DEBUG
+#define MKYAFFS2_DEBUG(s, args...)	MKYAFFS2_ERROR(s, ##args)
+#else
+#define MKYAFFS2_DEBUG(s, args...)
+#endif
+
+#define MKYAFFS2_VERBOSE(s, args...) \
+		({ if (MKYAFFS2_ISVERBOSE) \
+			MKYAFFS2_PRINT(s, ##args);})
+
+#define MKYAFFS2_PROGRESS_INIT() \
+		({ if (!MKYAFFS2_ISVERBOSE) \
+			progress_init();})
+
+#define MKYAFFS2_PROGRESS_BAR(objs, total) \
+		({ if (!MKYAFFS2_ISVERBOSE) \
+			progress_bar(objs, total);})
+
+/*----------------------------------------------------------------------------*/
+
+/* symlink */
+typedef union mkyaffs2_link {
+	char *alias;
+	struct mkyaffs2_obj *equiv_obj;
+} mkyaffs2_link_t;
+
+typedef struct mkyaffs2_obj {
 	dev_t dev;
 	ino_t ino;
-	unsigned obj;
-} object_item_t;
 
-/*-------------------------------------------------------------------------*/
+	unsigned obj_id;
+	char name[NAME_MAX + 1];
 
-static unsigned yaffs2_chunk_size = 0;
-static unsigned yaffs2_spare_size = 0;
+	struct mkyaffs2_obj *parent_obj;
+	struct list_head children;	/* for a directory */
+	struct list_head siblings;	/* neighbors in the same directory */
+	struct list_head hashlist;	/* hash table */
+} mkyaffs2_obj_t;
 
-static unsigned yaffs2_object_list_size = DEFAULT_OBJECT_NUMBERS;
-static object_item_t *yaffs2_object_list = 0;
+typedef struct mkyaffs2_fstree {
+	unsigned objs;
+	struct mkyaffs2_obj *root;
+} mkyaffs2_fstree_t;
 
-static unsigned yaffs2_current_objects = YAFFS_NOBJECT_BUCKETS;
-static unsigned yaffs2_total_objects = 0;
-static unsigned yaffs2_total_directories = 0;
-static unsigned yaffs2_total_pages = 0;
+/*----------------------------------------------------------------------------*/
 
-static int yaffs2_outfd = -1;
-static int yaffs2_convert_endian = 0;
+static unsigned mkyaffs2_flags = 0;
 
-static int (*oobfree_info)[2] = 0;
-static int (*write_chunk)(unsigned, unsigned, unsigned) = NULL;
+static unsigned mkyaffs2_chunksize = 0;
+static unsigned mkyaffs2_sparesize = 0;
 
-static unsigned char *yaffs2_data_buffer = NULL;
+static unsigned mkyaffs2_image_obj_id = YAFFS_NOBJECT_BUCKETS;
+static unsigned mkyaffs2_image_objs = 0;
+static unsigned mkyaffs2_image_pages = 0;
 
-/*-------------------------------------------------------------------------*/
+static int mkyaffs2_image_fd = -1;
 
-static int 
-object_list_compare (const void *a, const void * b)
+static char mkyaffs2_curfile[PATH_MAX + PATH_MAX] = {0};
+static char mkyaffs2_linkfile[PATH_MAX] = {0};
+
+static struct nand_ecclayout *mkyaffs2_oobinfo = NULL;
+static int (*mkyaffs2_writechunk)(unsigned, unsigned, unsigned) = NULL;
+
+static unsigned mkyaffs2_bufsize = 0;
+static unsigned char *mkyaffs2_datbuf = NULL;
+
+static struct mkyaffs2_fstree mkyaffs2_objtree = {0};
+static struct list_head mkyaffs2_objtable[MKYAFFS2_OBJTABLE_SIZE];
+
+/*----------------------------------------------------------------------------*/
+
+static struct mkyaffs2_obj *
+mkyaffs2_obj_alloc (void)
 {
-	object_item_t *oa, *ob;
-  
-	oa = (object_item_t *)a;
-	ob = (object_item_t *)b;
-  
-	if (oa->dev < ob->dev) 	return -1;
-	if (oa->dev > ob->dev) 	return 1;
-	if (oa->ino < ob->ino) 	return -1;
-	if (oa->ino > ob->ino) 	return 1;
+	struct mkyaffs2_obj *obj;
 
-	return 0;
+	obj = calloc(sizeof(struct mkyaffs2_obj), sizeof(unsigned char));
+	if (obj == NULL)
+		return NULL;
+
+	obj->parent_obj = obj;
+
+	INIT_LIST_HEAD(&obj->hashlist);
+	INIT_LIST_HEAD(&obj->children);
+	INIT_LIST_HEAD(&obj->siblings);
+
+	return obj;
 }
 
-static int 
-object_list_add (object_item_t *object)
+static void
+mkyaffs2_obj_free (struct mkyaffs2_obj *object)
 {
-	/* realloc much memory to store the objects list. */
-	if (yaffs2_total_objects >= yaffs2_object_list_size) {
-		size_t newsize;
-		object_item_t *newlist;
+	list_del(&object->children);
+	list_del(&object->siblings);
+	list_del(&object->hashlist);
 
-		if (yaffs2_object_list_size * 2 < MAX_OBJECT_NUMBERS) {
-			yaffs2_object_list_size *= 2;
-		}
-		else if (yaffs2_object_list_size <  MAX_OBJECT_NUMBERS) {
-			yaffs2_object_list_size = MAX_OBJECT_NUMBERS;
-		}
-		else {
-			fprintf(stderr, "too much objects (max: %u)\n",
-				MAX_OBJECT_NUMBERS);
-			return -1;
-		}
+	free(object);
+}
 
-		newsize = sizeof(object_item_t) * yaffs2_object_list_size;
-		newlist = realloc(yaffs2_object_list, newsize);
-		if (newlist == NULL) {
-			fprintf(stderr, "cannot allocate objects list ");
-			fprintf(stderr, "(%u objects, %u bytes)\n",
-				yaffs2_object_list_size, newsize);
-			return -1;
-		}
-		yaffs2_object_list = newlist;
+/*----------------------------------------------------------------------------*/
+
+static inline unsigned
+mkyaffs2_objtable_hash (unsigned hash)
+{
+	return hash % MKYAFFS2_OBJTABLE_SIZE;
+}
+
+static inline void
+mkyaffs2_objtable_insert (struct mkyaffs2_obj *object)
+{
+	unsigned n = mkyaffs2_objtable_hash(object->ino);
+	list_add_tail(&object->hashlist, &mkyaffs2_objtable[n]);
+}
+
+static inline struct mkyaffs2_obj *
+mkyaffs2_objtable_lookup (dev_t dev, ino_t ino)
+{
+	unsigned n = mkyaffs2_objtable_hash(ino);
+	struct list_head *p;
+	struct mkyaffs2_obj *obj;
+
+	list_for_each(p, &mkyaffs2_objtable[n]) {
+		obj = list_entry(p, mkyaffs2_obj_t, hashlist);
+		if (obj->dev == dev && obj->ino == ino)
+			return obj;
 	}
 
-	/* add the object */
-	yaffs2_object_list[yaffs2_total_objects].dev = object->dev;
-	yaffs2_object_list[yaffs2_total_objects].ino = object->ino;
-	yaffs2_object_list[yaffs2_total_objects].obj = object->obj;
-	qsort(yaffs2_object_list, ++yaffs2_total_objects, sizeof(object_item_t),
-	      object_list_compare);
-
-	return 0;
+	return NULL;
 }
 
-static int 
-object_list_search (object_item_t *object)
+static inline void
+mkyaffs2_objtable_init (void)
 {
-	object_item_t *r = NULL;
-	
-	if (yaffs2_total_objects > 0 &&
-	    (r = bsearch(object, yaffs2_object_list, yaffs2_total_objects,
-			 sizeof(object_item_t), object_list_compare)) != NULL)
-	{
-		object->obj = r->obj;
-		return 0;
+	unsigned n;
+
+	for (n = 0; n < MKYAFFS2_OBJTABLE_SIZE; n++)
+		INIT_LIST_HEAD(&mkyaffs2_objtable[n]);
+}
+
+static inline void
+mkyaffs2_objtable_exit (void)
+{
+	unsigned n;
+	struct mkyaffs2_obj *obj;
+	struct list_head *p;
+
+	for (n = 0; n < MKYAFFS2_OBJTABLE_SIZE; n++) {
+		list_for_each(p, &mkyaffs2_objtable[n]) {
+			obj = list_entry(p, struct mkyaffs2_obj, hashlist);
+			mkyaffs2_obj_free(obj);
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------*/
+
+static void
+mkyaffs2_objtree_cleanup (struct mkyaffs2_obj *object)
+{
+	struct mkyaffs2_obj *obj;
+	struct list_head *p, *n;
+
+	if (object == NULL)
+		return;
+
+	list_for_each_safe(p, n, &object->children) {
+		obj = list_entry(p, mkyaffs2_obj_t, siblings);
+		mkyaffs2_objtree_cleanup(obj);
 	}
 
-	return -1;
+	mkyaffs2_obj_free(object);
 }
 
-/*-------------------------------------------------------------------------*/
+static struct mkyaffs2_fstree *
+mkyaffs2_objtree_init (struct mkyaffs2_fstree *fst)
+{
+	struct mkyaffs2_fstree *f = fst;
+
+	if (f == NULL) {
+		f = malloc(sizeof(struct mkyaffs2_fstree));
+		if (f == NULL)
+			return NULL;
+	}
+
+	/* initialize */
+	memset(f, 0, sizeof(struct mkyaffs2_fstree));
+
+	return f;
+}
+
+static void
+mkyaffs2_objtree_exit (struct mkyaffs2_fstree *fst)
+{
+	mkyaffs2_objtree_cleanup(fst->root);
+}
+
+/*----------------------------------------------------------------------------*/
 
 static void 
-packedtags1_ecc_calculate (struct yaffs_packed_tags1 *pt)
+mkyaffs2_packedtags1_ecc (struct yaffs_packed_tags1 *pt)
 {
 	unsigned char *b = ((union yaffs_tags_union *)pt)->as_bytes;
 	unsigned i, j;
-	unsigned ecc = 0;
-	unsigned bit = 0;
+	unsigned ecc = 0, bit = 0;
 
 	/* clear the ecc field */
-	if (yaffs2_convert_endian) {
+	if (MKYAFFS2_ISYAFFS1) {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
-		b[6] &= 0xC0;
+		b[6] &= 0xc0;
 		b[7] &= 0x03;
 #elif defined(__BIG_ENDIAN_BITFIELD)
 		b[6] &= 0x03;
-		b[7] &= 0xC0;
+		b[7] &= 0xc0;
 #endif
 	}
-	else {
+	else
 		pt->ecc = 0;
-	}
 
 	/* calculate ecc */
 	for (i = 0; i < 8; i++) {
-		for (j = 1; j & 0xFF; j <<= 1) {
+		for (j = 1; j & 0xff; j <<= 1) {
 			bit++;
 			if (b[i] & j)
 				ecc ^= bit;
@@ -186,181 +288,159 @@ packedtags1_ecc_calculate (struct yaffs_packed_tags1 *pt)
 	}
 
 	/* write ecc back to tags */
-	if (yaffs2_convert_endian) {
+	if (MKYAFFS2_ISENDIAN) {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
-		b[6] |= ((ecc >> 6) & 0x3F);
-		b[7] |= ((ecc & 0x3F) << 2);
+		b[6] |= ((ecc >> 6) & 0x3f);
+		b[7] |= ((ecc & 0x3f) << 2);
 #elif defined(__BIG_ENDIAN_BITFIELD)
-		b[6] |= ((ecc & 0x3F) << 2);
-		b[7] |= ((ecc >> 6) & 0x3F);
+		b[6] |= ((ecc & 0x3f) << 2);
+		b[7] |= ((ecc >> 6) & 0x3f);
 #endif
 	}
-	else {
+	else
 		pt->ecc = ecc;
-	}
 }
 
-/*-------------------------------------------------------------------------*/
-
 static ssize_t
-tags2spare (unsigned char *spare, unsigned char *tags, size_t bytes)
+mkyaffs2_tag2spare (unsigned char *spare, unsigned char *tag, size_t bytes)
 {
 	unsigned i;
 	size_t copied = 0;
+	struct nand_oobfree *oobfree = mkyaffs2_oobinfo->oobfree;
 
-	for (i = 0; i < 8 && copied < bytes; i++) {
+	for (i = 0; i < MTD_MAX_OOBFREE_ENTRIES && copied < bytes; i++) {
 		size_t size = bytes - copied;
-		unsigned char *s = spare + oobfree_info[i][0];
+		unsigned char *s = spare + oobfree[i].offset;
 
-		if (size > oobfree_info[i][1]) {
-			size = oobfree_info[i][1];
-		}
+		if (size > oobfree[i].length)
+			size = oobfree[i].length;
 
-		memcpy(s, tags, size);
-		if (memcmp(s, tags, size)) {
+		memcpy(s, tag, size);
+		if (memcmp(s, tag, size))
 			return -1;
-		}
 
 		copied += size;
-		tags += size;
+		tag += size;
 	}
 
 	return copied;
 }
 
-/*-------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 
 static int 
-yaffs1_write_chunk (unsigned bytes,
-		    unsigned object_id,
-		    unsigned chunk_id)
+mkyaffs2_yaffs1_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 {
 	ssize_t written;
-	struct yaffs_ext_tags et;
+	struct yaffs_ext_tags tag;
 	struct yaffs_packed_tags1 pt;
-	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
+	unsigned char *spare = mkyaffs2_datbuf + mkyaffs2_chunksize;
 
 	/* prepare the spare (oob) first */
-	memset(&et, 0, sizeof(struct yaffs_ext_tags));
-	
-	et.chunk_id = chunk_id;
-//	et.serial_number = 0;	// double check
-	et.serial_number = 1;	// double check
-	et.n_bytes = bytes;
-	et.obj_id = object_id;
-	et.is_deleted = 0;	// double check
+	memset(&tag, 0, sizeof(struct yaffs_ext_tags));
 
-	memset(&pt, 0xFF, sizeof(struct yaffs_packed_tags1));
-	yaffs_pack_tags1(&pt, &et);
+	tag.chunk_id = chunk_id;
+	tag.serial_number = 1;	// double check
+	tag.n_bytes = bytes;
+	tag.obj_id = obj_id;
+	tag.is_deleted = 0;	// double check
 
-	if (yaffs2_convert_endian) {
+	memset(&pt, 0xff, sizeof(struct yaffs_packed_tags1));
+	yaffs_pack_tags1(&pt, &tag);
+
+	if (MKYAFFS2_ISENDIAN)
 		packedtags1_endian_transform(&pt, 0);
-	}
 
 #ifndef YAFFS_IGNORE_TAGS_ECC
-	packedtags1_ecc_calculate(&pt);
+	mkyaffs2_packedtags1_ecc(&pt);
 #endif
 
 	/* write the spare (oob) into the buffer */
-	memset(spare, 0xFF, yaffs2_spare_size);
-	written = tags2spare(spare, (unsigned char *)&pt,
-			     sizeof(struct yaffs_packed_tags1) -
-			     sizeof(pt.should_be_ff));
-	if (written != (sizeof(struct yaffs_packed_tags1) -
-			sizeof(pt.should_be_ff))) {
+	memset(spare, 0xff, mkyaffs2_sparesize);
+	written = mkyaffs2_tag2spare(spare, (unsigned char *)&pt,
+				     sizeof(struct yaffs_packed_tags1) -
+				     sizeof(pt.should_be_ff));
+	if (written != sizeof(struct yaffs_packed_tags1) -
+		       sizeof(pt.should_be_ff))
 		return -1;
-	}
 
 	/* write a whole "chunk + spare" back to the image */
-	written = safe_write(yaffs2_outfd, yaffs2_data_buffer, bufsize);
-	if (written != bufsize) {
+	written = safe_write(mkyaffs2_image_fd, 
+			     mkyaffs2_datbuf, mkyaffs2_bufsize);
+	if (written != mkyaffs2_bufsize)
 		return -1;
-	}
 
-	yaffs2_total_pages++;
+	mkyaffs2_image_pages++;
 
 	return 0;
 }
 
-/*-------------------------------------------------------------------------*/
-
 static int
-yaffs2_write_chunk (unsigned bytes,
-		    unsigned object_id,
-		    unsigned chunk_id)
+mkyaffs2_yaffs2_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 {
 	ssize_t written;
-	struct yaffs_ext_tags et;
+	struct yaffs_ext_tags tag;
 	struct yaffs_packed_tags2 pt;
-	size_t bufsize = yaffs2_chunk_size + yaffs2_spare_size;
-	unsigned char *spare = yaffs2_data_buffer + yaffs2_chunk_size;
+	unsigned char *spare = mkyaffs2_datbuf + mkyaffs2_chunksize;
 
 	/* prepare the spare (oob) first */
-	memset(&et, 0, sizeof(struct yaffs_ext_tags));
+	memset(&tag, 0, sizeof(struct yaffs_ext_tags));
 	
-	et.chunk_id = chunk_id;
-//	et.serial_number = 0;	// double check
-	et.serial_number = 1;	// double check
-	et.n_bytes = bytes;
-	et.obj_id = object_id;
-	et.chunk_used = 1;
-	et.seq_number = YAFFS_LOWEST_SEQUENCE_NUMBER;
+	tag.chunk_id = chunk_id;
+	tag.serial_number = 1;	// double check
+	tag.n_bytes = bytes;
+	tag.obj_id = obj_id;
+	tag.chunk_used = 1;
+	tag.seq_number = YAFFS_LOWEST_SEQUENCE_NUMBER;
 
-	memset(&pt, 0xFF, sizeof(struct yaffs_packed_tags2));
-	yaffs_pack_tags2_tags_only(&pt.t, &et);
+	memset(&pt, 0xff, sizeof(struct yaffs_packed_tags2));
+	yaffs_pack_tags2_tags_only(&pt.t, &tag);
 
-	if (yaffs2_convert_endian) {
+	if (MKYAFFS2_ISENDIAN)
 		packedtags2_tagspart_endian_transform(&pt);
-	}
 
 #ifndef YAFFS_IGNORE_TAGS_ECC
 	yaffs_ecc_calc_other((unsigned char *)&pt.t,
 				sizeof(struct yaffs_packed_tags2_tags_only),
 				&pt.ecc);
-	if (yaffs2_convert_endian) {
+	if (MKYAFFS2_ISENDIAN)
 		packedtags2_eccother_endian_transform(&pt);
-	}
 #endif
 
 	/* write the spare (oob) into the buffer */
-	memset(spare, 0xFF, yaffs2_spare_size);
-	written = tags2spare(spare, (unsigned char *)&pt,
-			     sizeof(struct yaffs_packed_tags2));
-	if (written != sizeof(struct yaffs_packed_tags2)) {
+	memset(spare, 0xff, mkyaffs2_sparesize);
+	written = mkyaffs2_tag2spare(spare, (unsigned char *)&pt,
+				     sizeof(struct yaffs_packed_tags2));
+	if (written != sizeof(struct yaffs_packed_tags2))
 		return -1;
-	}
 
 	/* write a whole "chunk + spare" back to the image */
-	written = safe_write(yaffs2_outfd, yaffs2_data_buffer, bufsize);
-	if (written != bufsize) {
+	written = safe_write(mkyaffs2_image_fd,
+			     mkyaffs2_datbuf, mkyaffs2_bufsize);
+	if (written != mkyaffs2_bufsize)
 		return -1;
-	}
 
-	yaffs2_total_pages++;
+	mkyaffs2_image_pages++;
 
 	return 0;
 }
 
-/*-------------------------------------------------------------------------*/
-
 static int 
-write_object_header (const char *name,
-		     struct stat *s,
-		     enum yaffs_obj_type type,
-		     const char *alias,
-		     unsigned object_id,
-		     unsigned parent_id,
-		     unsigned equivalent_id)
+mkyaffs2_write_oh (struct mkyaffs2_obj *obj,
+		   struct stat *s,
+		   enum yaffs_obj_type type,
+		   union mkyaffs2_link *ylink)
 {
 	int retval;
 	struct yaffs_obj_hdr oh;
 
-	memset(&oh, 0xFF, sizeof(struct yaffs_obj_hdr));
+	memset(&oh, 0xff, sizeof(struct yaffs_obj_hdr));
 
 	oh.type = type;
-	oh.parent_obj_id = parent_id;
-	strncpy(oh.name, name, YAFFS_MAX_NAME_LENGTH);
+	oh.parent_obj_id = obj->parent_obj->obj_id;
+	strncpy(oh.name, obj->name, YAFFS_MAX_NAME_LENGTH);
+	if (strlen(obj->name) > YAFFS_MAX_NAME_LENGTH && MKYAFFS2_ISVERBOSE)
+		MKYAFFS2_WARN("file name will be truncated\n");
 	
 	if(type != YAFFS_OBJECT_TYPE_HARDLINK) {
 		oh.yst_mode = s->st_mode;
@@ -377,64 +457,61 @@ write_object_header (const char *name,
 		oh.file_size = s->st_size;
 		break;
 	case YAFFS_OBJECT_TYPE_HARDLINK:
-		oh.equiv_id = equivalent_id;
+		oh.equiv_id = ylink->equiv_obj->obj_id;
 		break;
 	case YAFFS_OBJECT_TYPE_SYMLINK:
-		strncpy(oh.alias, alias, YAFFS_MAX_ALIAS_LENGTH);
+		strncpy(oh.alias, ylink->alias, YAFFS_MAX_ALIAS_LENGTH);
+		if (MKYAFFS2_ISVERBOSE &&
+		    strlen(obj->name) > YAFFS_MAX_ALIAS_LENGTH)
+			MKYAFFS2_WARN("alias name will be truncated\n");
 		break;
 	default:
 		break;
 	}
 
-	if (yaffs2_convert_endian) {
- 	   	objheader_endian_transform(&oh);
-	}
+	if (MKYAFFS2_ISENDIAN)
+ 	   	oh_endian_transform(&oh);
 
 	/* copy header into the buffer */
-	memset(yaffs2_data_buffer, 0xFF, yaffs2_chunk_size);
-	memcpy(yaffs2_data_buffer, &oh, sizeof(struct yaffs_obj_hdr));
+	memset(mkyaffs2_datbuf, 0xff, mkyaffs2_chunksize);
+	memcpy(mkyaffs2_datbuf, &oh, sizeof(struct yaffs_obj_hdr));
 
 	/* write buffer */
-	retval = write_chunk(0xFFFF, object_id, 0);
+	retval = mkyaffs2_writechunk(0xffff, obj->obj_id, 0);
 
 	return retval;
 }
 
-/*-------------------------------------------------------------------------*/
-
 static int 
-parse_regular_file (const char *fpath,
-		    struct dirent *dentry,
-		    unsigned object_id,
-		    unsigned parent_id)
+mkyaffs2_write_regfile (const char *fpath, unsigned obj_id)
 {
 	int fd, retval = 0;
-	ssize_t bytes;
 	unsigned chunk = 0;
-	unsigned char *datbuf = yaffs2_data_buffer;
+	unsigned char *datbuf = mkyaffs2_datbuf;
+	ssize_t bytes;
 
 	fd = open(fpath, O_RDONLY);
 	if (fd < 0) {
-		fprintf(stderr, "cannot open the file: %s\n", fpath);
+		MKYAFFS2_DEBUG("cannot open the file: %s\n", fpath);
 		return -1;
 	}
 
-	memset(datbuf, 0xFF, yaffs2_chunk_size);
-	while((bytes = safe_read(fd, datbuf, yaffs2_chunk_size)) != 0) {
+	memset(datbuf, 0xff, mkyaffs2_chunksize);
+	while((bytes = safe_read(fd, datbuf, mkyaffs2_chunksize)) != 0) {
 		if (bytes < 0) {
-			fprintf(stderr, "error while reading file %s\n", fpath);
+			MKYAFFS2_DEBUG("error while reading file %s\n", fpath);
 			retval = bytes;
 			break;
 		}
 
 		/* write buffer */
-		retval = write_chunk(bytes, object_id, ++chunk);
+		retval = mkyaffs2_writechunk(bytes, obj_id, ++chunk);
 		if (retval) {
-			fprintf(stderr, "error while writing file %s\n", fpath);
+			MKYAFFS2_DEBUG("error while writing file %s\n", fpath);
 			break;
 		}
 
-		memset(datbuf, 0xFF, yaffs2_chunk_size);
+		memset(datbuf, 0xff, mkyaffs2_chunksize);
 	}
 
 	close(fd);
@@ -442,153 +519,107 @@ parse_regular_file (const char *fpath,
 	return retval;
 }
 
-/*-------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 
-static int 
-parse_directory (unsigned parent, const char *path)
+static inline void
+mkyaffs2_scan_dir_status (unsigned status)
+{
+	char st = '-';
+
+	switch (status % 4) {
+	case 1:
+		st = '\\';
+		break;
+	case 2:
+		st = '|';
+		break;
+	case 3:
+		st = '/';
+		break;
+	default:
+		st = '-';
+		break;
+	}
+
+	MKYAFFS2_PRINT("\b\b\b[%c]", st);
+	fflush(stdout);
+}
+
+static int
+mkyaffs2_scan_dir (struct mkyaffs2_obj *parent)
 {
 	DIR *dir;
+	struct stat s;
 	struct dirent *dent;
+	struct mkyaffs2_obj *obj = NULL;
 
-	yaffs2_total_directories++;
-	
-	dir = opendir(path);
-	if (dir == NULL) {
-		fprintf(stderr, "cannot open the directory: %s\n", path);
-		return -1;
-	}
-	
-	while((dent = readdir(dir)) != NULL) {
-		/* ignore "." and ".." */
-		if (!strcmp(dent->d_name, ".") ||
-		    !strcmp(dent->d_name, ".."))
-		{
-			continue;
+	if (parent == NULL) {
+		if (mkyaffs2_objtree.root) {
+			mkyaffs2_objtree_exit(&mkyaffs2_objtree);
+			mkyaffs2_objtree_init(&mkyaffs2_objtree);
 		}
 
-		int retval = 0;
- 		char fpath[PATH_MAX];
-		struct stat s;
-		
-		sprintf(fpath, "%s/%s", path, dent->d_name);
-		if (lstat(fpath, &s) < 0) {
-			fprintf(stderr, "warning: cannot stat the file: %s\n",
-				fpath);
-			continue;
-		}
-		
-		if (S_ISLNK(s.st_mode) ||
-		    S_ISREG(s.st_mode) ||
-		    S_ISDIR(s.st_mode) ||
-		    S_ISBLK(s.st_mode) ||
-		    S_ISCHR(s.st_mode) ||
-		    S_ISFIFO(s.st_mode) ||
-		    S_ISSOCK(s.st_mode))
-		{
-			unsigned id;
-			struct object_item obj;
-			enum yaffs_obj_type ftype;
-
-			id = ++yaffs2_current_objects;
-			
-			printf("object %u, %s is a ", id, fpath);
-			
-			/* we're going to create an object for it */
-			obj.dev = s.st_dev;
-			obj.ino = s.st_ino;
-			obj.obj = id;
-
-			/* special case for hard link */
-			if (!object_list_search(&obj)) {
-			 	/* we need to make a hard link */
-				ftype = YAFFS_OBJECT_TYPE_HARDLINK;
-			 	printf("hard link to object %u\n", obj.obj);
-				retval = write_object_header(dent->d_name, &s,
-							     ftype, NULL, id,
-							     parent, obj.obj);
-				if (retval) {
-					goto error;
-				}
-				continue;
-			}
-
-			retval = object_list_add(&obj);
-			if (retval) {
-				goto error;
-			}
-
-			if (S_ISLNK(s.st_mode)) {
-				char sympath[PATH_MAX];
-
-				ftype = YAFFS_OBJECT_TYPE_SYMLINK;
-				memset(sympath, 0, sizeof(sympath));
-				readlink(fpath, sympath, sizeof(sympath) -1);
-				printf("symbolic link to %s\n", sympath);
-				retval = write_object_header(dent->d_name, &s,
-							     ftype, sympath,
-							     id, parent, -1);
-			}
-			else if (S_ISREG(s.st_mode)) {
-				printf("file\n");
-				ftype = YAFFS_OBJECT_TYPE_FILE;
-				retval = write_object_header(dent->d_name, &s,
-							     ftype, NULL, id,
-							     parent, -1);
-				if (!retval) {
-					retval = parse_regular_file(fpath, dent,
-								    id, parent);
-				}
-			}
-			else if (S_ISSOCK(s.st_mode)) {
-				printf("socket\n");
-				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
-				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, id,
-							     parent, -1);
-			}
-			else if (S_ISFIFO(s.st_mode)) {
-				printf("fifo\n");
-				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
-				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, id,
-							     parent, -1);
-			}
-			else if (S_ISCHR(s.st_mode)) {
-				printf("character device\n");
-				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
-				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, id,
-							     parent, -1);
-			}
-			else if (S_ISBLK(s.st_mode)) {
-				printf("block device\n");
-				ftype = YAFFS_OBJECT_TYPE_SPECIAL;
-				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, id,
-							     parent, -1);
-			}
-			else if (S_ISDIR(s.st_mode)) {
-				printf("directory\n");
-				ftype = YAFFS_OBJECT_TYPE_DIRECTORY; 
-				retval = write_object_header(dent->d_name, &s,
-						    	     ftype, NULL, id,
-							     parent, -1);
-				if (!retval) {
-					retval = parse_directory(id, fpath);
-				}
-			}
-		}
-		else {
-			fprintf(stderr, "warning: unsupport type for %s\n",
-				fpath);
-		}
-
-error:
-		if (retval) {
-			fprintf(stderr, "error while parsing %s\n", fpath);
-			closedir(dir);
+		if (stat(mkyaffs2_curfile[0] == '\0' ? 
+			 "." : mkyaffs2_curfile, &s) ||
+		    !S_ISDIR(s.st_mode)) {
+			MKYAFFS2_DEBUG("root object is NOT a directory (%s)\n",
+					mkyaffs2_curfile);
 			return -1;
 		}
+
+		obj = mkyaffs2_obj_alloc();
+		if (obj == NULL) {
+			MKYAFFS2_DEBUG("allocate object failed for %s\n",
+					mkyaffs2_curfile);
+			return -1;
+		}
+
+		mkyaffs2_objtree.root = obj;
+		mkyaffs2_scan_dir_status(++mkyaffs2_objtree.objs);
+
+		return mkyaffs2_scan_dir(obj);
+	}
+
+	dir = opendir(mkyaffs2_curfile[0] == '\0' ? "." : mkyaffs2_curfile);
+	if (dir == NULL) {
+		MKYAFFS2_ERROR("cannot open the directory: %s\n",
+				mkyaffs2_curfile);
+		return -1;
+	}
+
+	while((dent = readdir(dir)) != NULL) {
+		if (!strcmp(dent->d_name, ".") || !strcmp(dent->d_name, ".."))
+			continue;
+
+		if (mkyaffs2_curfile[0] != '\0' &&
+		    mkyaffs2_curfile[strlen(mkyaffs2_curfile) - 1] != '/')
+			strncat(mkyaffs2_curfile, "/", 
+				sizeof(mkyaffs2_curfile) -
+				strlen(mkyaffs2_curfile) - 1);
+
+		strncat(mkyaffs2_curfile, dent->d_name,
+			sizeof(mkyaffs2_curfile) - strlen(mkyaffs2_curfile) - 1);
+
+		obj = mkyaffs2_obj_alloc();
+		if (obj == NULL) {
+			MKYAFFS2_DEBUG("allocate object failed for %s\n",
+					mkyaffs2_curfile);
+			return -1;
+		}
+
+		strncpy(obj->name, dent->d_name, NAME_MAX);
+		obj->parent_obj = parent;
+		list_add_tail(&obj->siblings, &parent->children);
+		mkyaffs2_scan_dir_status(++mkyaffs2_objtree.objs);
+
+		MKYAFFS2_DEBUG("object \"%s\" : %s\n", 
+				obj->name, mkyaffs2_curfile);
+
+		if (!lstat(mkyaffs2_curfile, &s) && S_ISDIR(s.st_mode))
+			mkyaffs2_scan_dir(obj);
+
+		if (!strcmp(dirname(mkyaffs2_curfile), "."))
+			mkyaffs2_curfile[0] = '\0';
 	}
 
 	closedir(dir);
@@ -596,155 +627,400 @@ error:
 	return 0;
 }
 
-/*-------------------------------------------------------------------------*/
-
-static void
-show_usage (void)
+static int
+mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 {
-	fprintf(stderr, "Usage: mkyaffs2 [-e] [-h] [-p pagesize] dirname imgfile\n");
-	fprintf(stderr, "mkyaffs2: A utility to make the yaffs2 image\n");
-	fprintf(stderr, "version: %s\n", YAFFS2UTILS_VERSION);
-	fprintf(stderr, "options:\n");
-	fprintf(stderr, "	-h		display this help message and exit\n");
-	fprintf(stderr, "	-e		convert the endian differed from the local machine\n");
-	fprintf(stderr, "	-p pagesize	page size (512|2048, default: %u)\n", DEFAULT_CHUNK_SIZE);
-	fprintf(stderr, "			512 bytes page size will format the yaffs1 image\n");
+	int retval = 0;
+	struct stat s;
+
+	struct list_head *p;
+	struct mkyaffs2_obj *child;
+	union mkyaffs2_link ylink;
+
+	if (obj == NULL) {
+		if (mkyaffs2_objtree.root == NULL)
+			return 0;
+
+		return mkyaffs2_process_objtree(mkyaffs2_objtree.root);
+	}
+
+	/* root object */
+	if (obj == mkyaffs2_objtree.root) {
+		if (stat(mkyaffs2_curfile[0] == '\0' ?
+			 "." : mkyaffs2_curfile, &s) < 0 ||
+		    !S_ISDIR(s.st_mode)) {
+			MKYAFFS2_DEBUG("root object is NOT a directory (%s)\n",
+					mkyaffs2_curfile);
+			return -1;
+		}
+
+		mkyaffs2_image_objs = 0;
+		mkyaffs2_image_obj_id = YAFFS_NOBJECT_BUCKETS;
+
+		obj->dev = s.st_dev;
+		obj->ino = s.st_ino;
+		obj->obj_id = YAFFS_OBJECTID_ROOT;
+
+		mkyaffs2_objtable_insert(obj);
+
+		/* only write root object when yaffs2 is applied */
+		if (MKYAFFS2_ISYAFFS1)
+			retval = mkyaffs2_write_oh(obj, &s,
+						   YAFFS_OBJECT_TYPE_DIRECTORY,
+						   NULL);
+
+		goto next;
+	}
+
+	if (!strlen(obj->name)) {
+		/* it should NOT happen! */
+		MKYAFFS2_DEBUG("skipping obj with empty name\n");
+		return 0;
+	}
+
+	/* format file path */
+	if (mkyaffs2_curfile[0] != '\0' &&
+	    mkyaffs2_curfile[strlen(mkyaffs2_curfile) - 1] != '/')
+		strncat(mkyaffs2_curfile, "/",
+			sizeof(mkyaffs2_curfile) -
+			strlen(mkyaffs2_curfile) - 1);
+
+	strncat(mkyaffs2_curfile, obj->name,
+		sizeof(mkyaffs2_curfile) - strlen(mkyaffs2_curfile) - 1);
+
+	retval = lstat(mkyaffs2_curfile, &s);
+	if (retval) {
+		MKYAFFS2_VERBOSE("error while processing file \"%s\" ",
+				 mkyaffs2_curfile);
+		MKYAFFS2_VERBOSE("(permission denied?)");
+		goto next;
+	}
+
+		/* update the obj */
+		obj->dev = s.st_dev;
+		obj->ino = s.st_ino;
+		obj->obj_id = ++mkyaffs2_image_obj_id;
+
+	if (obj->obj_id > YAFFS_MAX_OBJID && MKYAFFS2_ISVERBOSE)
+		MKYAFFS2_WARN("too many files!\n ");
+
+	MKYAFFS2_VERBOSE("object %u, %s is a ", 
+			 obj->obj_id, mkyaffs2_curfile);
+
+	/* hardlink? */
+	ylink.equiv_obj = mkyaffs2_objtable_lookup(obj->dev, obj->ino);
+	if (ylink.equiv_obj != NULL) {
+		MKYAFFS2_VERBOSE("hard link to object %u\n", 
+				 ylink.equiv_obj->obj_id);
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_HARDLINK, &ylink);
+		goto next;
+	}
+
+	mkyaffs2_objtable_insert(obj);
+
+	switch (s.st_mode & S_IFMT) {
+	case S_IFREG:
+		MKYAFFS2_VERBOSE("file\n");
+		retval = mkyaffs2_write_oh(obj, &s, YAFFS_OBJECT_TYPE_FILE,
+					   NULL);
+		if (!retval)
+			retval = mkyaffs2_write_regfile(mkyaffs2_curfile,
+							obj->obj_id);
+		break;
+	case S_IFLNK:
+		memset(mkyaffs2_linkfile, 0,
+		       sizeof(mkyaffs2_linkfile));
+		readlink(mkyaffs2_curfile, mkyaffs2_linkfile,
+			 sizeof(mkyaffs2_linkfile) - 1);
+		MKYAFFS2_VERBOSE("symbolic link to %s\n",
+				 mkyaffs2_linkfile);
+		ylink.alias = mkyaffs2_linkfile;
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_SYMLINK, &ylink);
+		break;
+	case S_IFDIR:
+		MKYAFFS2_VERBOSE("directory\n");
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_DIRECTORY, NULL);
+		break;
+	case S_IFBLK:
+		MKYAFFS2_VERBOSE("block device\n");
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_SPECIAL, NULL);
+		break;
+	case S_IFCHR:
+		MKYAFFS2_VERBOSE("character device\n");
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_SPECIAL, NULL);
+		break;
+	case S_IFIFO:
+		MKYAFFS2_VERBOSE("fifo\n");
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_SPECIAL, NULL);
+		break;
+	case S_IFSOCK:
+		MKYAFFS2_VERBOSE("socket\n");
+		retval = mkyaffs2_write_oh(obj, &s,
+					   YAFFS_OBJECT_TYPE_SPECIAL, NULL);
+		break;
+	default:
+		/* skipping un-supported files silently */
+		MKYAFFS2_DEBUG("skipped (unsupported file)\n");
+	}
+
+next:
+	if (retval) {
+		MKYAFFS2_ERROR("%cerror while parsing \"%s\"\n",
+				MKYAFFS2_ISVERBOSE ? '\0' : '\n',
+				mkyaffs2_curfile);
+	}
+	else {
+		MKYAFFS2_PROGRESS_BAR(++mkyaffs2_image_objs,
+				      mkyaffs2_objtree.objs);
+
+		if (S_ISDIR(s.st_mode)) {
+			list_for_each(p, &obj->children) {
+				child = list_entry(p, mkyaffs2_obj_t, siblings);
+				retval = mkyaffs2_process_objtree(child);
+				if (retval < 0)
+					break;
+			}
+		}
+	}
+
+	/* restore current file path */
+	if (!strcmp(dirname(mkyaffs2_curfile), "."))
+		mkyaffs2_curfile[0] = '\0';
+
+	return retval;
 }
 
-/*-------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
+
+static int
+mkyaffs2_load_spare (const char *oobfile)
+{
+	int fd;
+	ssize_t reads;
+
+	if (oobfile == NULL)
+		return 0;
+
+	if ((fd = open(oobfile, O_RDONLY)) < 0) {
+		MKYAFFS2_DEBUG("open oob image failed\n");
+		return -1;
+	}
+
+	reads = safe_read(fd, &nand_oob_user, sizeof(struct nand_ecclayout));
+	if (reads != sizeof(struct nand_ecclayout)) {
+		MKYAFFS2_DEBUG("parse oob image failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static int
+mkyaffs2_create_image (const char *dirpath, const char *imgfile)
+{
+	int retval;
+
+	/* table initiailzation */
+	mkyaffs2_objtable_init();
+	mkyaffs2_objtree_init(&mkyaffs2_objtree);
+
+	/* allocate working buffer */
+	mkyaffs2_bufsize = mkyaffs2_chunksize + mkyaffs2_sparesize;
+	mkyaffs2_datbuf = (unsigned char *)malloc(mkyaffs2_bufsize);
+	if (mkyaffs2_datbuf == NULL) {
+		MKYAFFS2_ERROR("cannot allocate working buffer ");
+		MKYAFFS2_ERROR("(default: %u bytes)\n",
+				mkyaffs2_chunksize + mkyaffs2_sparesize);
+		retval = -1;
+		goto exit_and_out;
+	}
+
+	mkyaffs2_image_fd = open(imgfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (mkyaffs2_image_fd < 0) {
+		MKYAFFS2_ERROR("cannot open the image file: %s\n", imgfile);
+		retval = -1;
+		goto free_and_out;
+	}
+
+	/* stage 1: scanning direcotry */
+	MKYAFFS2_PRINT("stage 1: scanning directory \"%s\"... [*]",
+			mkyaffs2_curfile);
+
+	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
+	retval = mkyaffs2_scan_dir(NULL);
+	if (retval < 0) {
+		MKYAFFS2_ERROR("\nerrors while scanning \"%s\"\n", dirpath);
+		retval = -1;
+		goto free_and_out;
+	}
+
+	MKYAFFS2_PRINT("\b\b\b[done]\nscanning complete, total %u objects.\n",
+			mkyaffs2_objtree.objs);
+
+	/* stage 2: making a image */
+	MKYAFFS2_PRINT("stage 2: making image \"%s\"\n", imgfile);
+
+	MKYAFFS2_PROGRESS_INIT();
+
+	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
+	retval = mkyaffs2_process_objtree(NULL);
+
+free_and_out:
+	if (mkyaffs2_image_fd >= 0)
+		close(mkyaffs2_image_fd);
+	free(mkyaffs2_datbuf);
+exit_and_out:
+	mkyaffs2_objtree_exit(&mkyaffs2_objtree);
+	mkyaffs2_objtable_exit();
+
+	return retval;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static int
+mkyaffs2_helper (void)
+{
+	MKYAFFS2_HELP("Usage: ");
+	MKYAFFS2_HELP("mkyaffs2 [-e] [-h] [-v] [-p size] [-o file] dirname imgfile\n");
+	MKYAFFS2_HELP("mkyaffs2: A utility to make the yaffs2 image\n");
+	MKYAFFS2_HELP("version: %s\n", YAFFS2UTILS_VERSION);
+	MKYAFFS2_HELP("options:\n");
+	MKYAFFS2_HELP("	-h	");
+	MKYAFFS2_HELP("display this help message and exit.\n");
+	MKYAFFS2_HELP("	-e	");
+	MKYAFFS2_HELP("convert endian differed from local machine.\n");
+	MKYAFFS2_HELP("	-v	");
+	MKYAFFS2_HELP("verbose details instead of progress bar.\n");
+	MKYAFFS2_HELP("	-p size	");
+	MKYAFFS2_HELP("page size of target device ");
+	MKYAFFS2_HELP("(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
+	MKYAFFS2_HELP("	-o file	");
+	MKYAFFS2_HELP("load external oob image file.\n");
+
+	return -1;
+}
+
+/*----------------------------------------------------------------------------*/
 
 int 
 main (int argc, char *argv[])
 {
-	int retval, objsize;
-	char *dirpath, *imgpath;
+	int retval;
+	char *dirpath = NULL, *imgfile = NULL, *oobfile = NULL;
 	struct stat statbuf;
 	
 	int option, option_index;
-	static const char *short_options = "hep:";
+	static const char *short_options = "hvep:o:";
 	static const struct option long_options[] = {
 		{"pagesize", 	required_argument, 	0, 'p'},
+		{"oobimg",	required_argument,	0, 'o'},
 		{"endian", 	no_argument, 		0, 'e'},
+		{"verbose", 	no_argument, 		0, 'v'},
 		{"help", 	no_argument, 		0, 'h'},
 	};
 
-	printf("mkyaffs2-%s: image building tool for YAFFS2\n",
+	MKYAFFS2_PRINT("mkyaffs2-%s: image building tool for YAFFS2\n",
 		YAFFS2UTILS_VERSION);
 
 	if (getuid() != 0) {
-		fprintf(stderr, "warning: non-root users\n");
+		mkyaffs2_flags |= MKYAFFS2_FLAGS_NONROOT;
+		MKYAFFS2_WARN("warning: non-root users.\n");
+		MKYAFFS2_WARN("suggest: executing this tool as root.\n");
 	}
 
-	yaffs2_chunk_size = DEFAULT_CHUNK_SIZE;
+	mkyaffs2_chunksize = DEFAULT_CHUNKSIZE;
 
 	while ((option = getopt_long(argc, argv, short_options,
-				     long_options, &option_index)) != EOF)
-	{
+				     long_options, &option_index)) != EOF) {
 		switch (option) {
 		case 'p':
-			yaffs2_chunk_size = strtoul(optarg, NULL, 10);
+			mkyaffs2_chunksize = strtoul(optarg, NULL, 10);
+			break;
+		case 'o':
+			oobfile = optarg;
 			break;
 		case 'e':
-			yaffs2_convert_endian = 1;
+			mkyaffs2_flags |= MKYAFFS2_FLAGS_ENDIAN;
+			break;
+		case 'v':
+			mkyaffs2_flags |= MKYAFFS2_FLAGS_VERBOSE;
 			break;
 		case 'h':
-			show_usage();
-			return 0;
 		default:
-			show_usage();
-			return -1;
+			return mkyaffs2_helper();
 		}
 	}
 
-	if (argc - optind < 2) {
-		show_usage();
-		return -1;
-	}
+	if (argc - optind < 2)
+		return mkyaffs2_helper();
 
 	dirpath = argv[optind];
-	imgpath = argv[optind + 1];
+	imgfile = argv[optind + 1];
 
-	/* valid whethe the page size is valid */
-	switch (yaffs2_chunk_size) {
+	/* veridate the page size */
+	switch (mkyaffs2_chunksize) {
 	case 512:
-		write_chunk = &yaffs1_write_chunk;
-		oobfree_info = (int (*)[2])nand_oobfree_16;
+		mkyaffs2_writechunk = &mkyaffs2_yaffs1_writechunk;
+		if (oobfile == NULL)
+			mkyaffs2_oobinfo = &nand_oob_16;
+		mkyaffs2_flags |= MKYAFFS2_FLAGS_YAFFS1;
 		break;
 	case 2048:
-		write_chunk = &yaffs2_write_chunk;
-		oobfree_info = (int (*)[2])nand_oobfree_64;
+		mkyaffs2_writechunk = &mkyaffs2_yaffs2_writechunk;
+		if (oobfile == NULL)
+			mkyaffs2_oobinfo = &nand_oob_64;
 		break;
 	default:
-		fprintf(stderr, "%u bytes page size is not supported\n",
-			yaffs2_chunk_size);
+		MKYAFFS2_ERROR("%u bytes page size is NOT supported\n",
+				mkyaffs2_chunksize);
 		return -1;
 	}
 
 	/* spare size */
-	yaffs2_spare_size = yaffs2_chunk_size / 32;
+	mkyaffs2_sparesize = mkyaffs2_chunksize / 32;
+
+	/* verify spare image if it is existed */
+	if (oobfile) {
+		if (mkyaffs2_load_spare(oobfile) < 0) {
+			MKYAFFS2_ERROR("parse oob image failed\n");
+			return -1;
+		}
+		mkyaffs2_oobinfo = &nand_oob_user;
+		/* FIXME: verify for the various ecc layout */
+	}
 
 	/* verify whether the input directory is valid */
-	if (stat(dirpath, &statbuf) < 0 && 
-	    !S_ISDIR(statbuf.st_mode))
-	{
-		fprintf(stderr, "%s is not a directory\n", dirpath);
+	if (strlen(dirpath) >= PATH_MAX || strlen(imgfile) >= PATH_MAX) {
+		MKYAFFS2_ERROR("directory or image path is too long \n");
+		MKYAFFS2_ERROR("(max: %u characters)\n", PATH_MAX - 1);
 		return -1;
 	}
 
-	/* allocate default objects array */
-	objsize = sizeof(object_item_t) * yaffs2_object_list_size;
-	yaffs2_object_list = (object_item_t *)malloc(objsize);
-	if (yaffs2_object_list == NULL) {
-		fprintf(stderr, "cannot allocate objects list ");
-		fprintf(stderr, "(default: %u objects, %u bytes)\n", 
-			yaffs2_object_list_size,
-			yaffs2_object_list_size * sizeof(object_item_t));
+	if (stat(dirpath, &statbuf) < 0 && !S_ISDIR(statbuf.st_mode)) {
+		MKYAFFS2_ERROR("ROOT is not a directory (%s)\n", dirpath);
 		return -1;
 	}
 
-	/* allocate working buffer */
-	yaffs2_data_buffer = (unsigned char *)malloc(yaffs2_chunk_size +
-						     yaffs2_spare_size);
-	if (yaffs2_data_buffer == NULL) {
-		fprintf(stderr, "cannot allocate working buffer ");
-		fprintf(stderr, "(default: %u bytes)\n",
-			yaffs2_chunk_size + yaffs2_spare_size);
-		free(yaffs2_object_list);
-		return -1;
-	}
-
-	/* output file */
-	yaffs2_outfd = open(imgpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (yaffs2_outfd < 0) {
-		fprintf(stderr, "cannot open the ourput file: %s\n", 
-			imgpath);
-		free(yaffs2_data_buffer);
-		free(yaffs2_object_list);
-		return -1;
-	}
-
-	printf("Processing directory %s into image file %s\n",
-		dirpath, imgpath);
-	retval = write_object_header("", &statbuf, YAFFS_OBJECT_TYPE_DIRECTORY,
-				     NULL, 1, 1, -1);
+	retval = mkyaffs2_create_image(dirpath, imgfile);
 	if (!retval) {
-		yaffs2_total_objects++;
-		retval = parse_directory(YAFFS_OBJECTID_ROOT, dirpath);
-	}
-
-	if (retval) {
-		fprintf(stderr, "operation incomplete!\n");
+		MKYAFFS2_PRINT("%coperation complete.\n",
+			MKYAFFS2_ISVERBOSE ? '\0' : '\n');
+		MKYAFFS2_PRINT("%u objects in %u NAND pages\n", 
+			mkyaffs2_image_objs, mkyaffs2_image_pages);
 	}
 	else {
-		printf("operation complete.\n");
-		printf("%u objects in %u directories\n%u NAND pages\n", 
-			yaffs2_total_objects, yaffs2_total_directories, 
-			yaffs2_total_pages);
+		MKYAFFS2_ERROR("\noperation incomplete!\n");
+		MKYAFFS2_ERROR("image may be broken!!!\n");
 	}
-
-	free(yaffs2_data_buffer);
-	free(yaffs2_object_list);
-	close(yaffs2_outfd);
 
 	return retval;
 }
