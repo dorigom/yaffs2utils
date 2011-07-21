@@ -29,10 +29,10 @@
 #include <string.h>
 #include <getopt.h>
 #include <sys/ioctl.h>
+#include <mtd/mtd-user.h>
 
 #include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
-#include "yaffs2utils_mtd.h"
 #include "yaffs2utils_endian.h"
 
 /*-------------------------------------------------------------------------*/
@@ -57,15 +57,18 @@ static unsigned unspare2_flags = 0;
 /*-------------------------------------------------------------------------*/
 
 static void
-unspare2_endian_transform (struct nand_ecclayout *oob)
+unspare2_endian_transform (nand_ecclayout_t *oob)
 {
-	int i;
+	unsigned i, eccpos_entries, oobfree_entries;
+
+	eccpos_entries = sizeof(oob->eccpos) / sizeof(unsigned); 
+	oobfree_entries = sizeof(oob->oobfree) / sizeof(struct nand_oobfree);
 
 	oob->eccbytes = ENDIAN_SWAP_32(oob->eccbytes);
 	oob->oobavail = ENDIAN_SWAP_32(oob->oobavail);
-	for (i = 0; i < 64; i++)
+	for (i = 0; i < eccpos_entries; i++)
 		oob->eccpos[i] = ENDIAN_SWAP_32(oob->eccpos[i]);
-	for (i = 0; i < MTD_MAX_OOBFREE_ENTRIES; i++) {
+	for (i = 0; i < oobfree_entries; i++) {
 		oob->oobfree[i].offset = ENDIAN_SWAP_32(oob->oobfree[i].offset);
 		oob->oobfree[i].length = ENDIAN_SWAP_32(oob->oobfree[i].length);
 	}
@@ -78,10 +81,11 @@ unspare2_dump (const char *devfile, const char *imgfile)
 {
 	int fd, retval = 0;
 	ssize_t written;
-	struct nand_ecclayout oob;
+	nand_ecclayout_t oob;
 
 	/* get the ecc layout via ioctl() */
-	memset(&oob, 0, sizeof(struct nand_ecclayout));
+	/* FIXME: ECCGETLAYOUT is deprecated in the latest kernel. */
+	memset(&oob, 0, sizeof(nand_ecclayout_t));
 
 	if ((fd = open(devfile, O_RDWR)) < 0) {
 		retval = -1;
@@ -106,8 +110,8 @@ unspare2_dump (const char *devfile, const char *imgfile)
 		UNSPARE2_ERROR("cannot open the image %s\n", imgfile);
 	}
 
-	written = safe_write(fd, &oob, sizeof(struct nand_ecclayout));
-	if (written != sizeof(struct nand_ecclayout)) {
+	written = safe_write(fd, &oob, sizeof(nand_ecclayout_t));
+	if (written != sizeof(nand_ecclayout_t)) {
 		retval = -1;
 		UNSPARE2_ERROR("write oob info back to image failed\n");
 	}

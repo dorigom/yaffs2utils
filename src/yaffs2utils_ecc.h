@@ -19,15 +19,15 @@
 #ifndef _YAFFS2UTILS_ECC_H_
 #define _YAFFS2UTILS_ECC_H_
 
-#include "yaffs2utils_mtd.h"
+#include <mtd/mtd-user.h>
 
-static struct nand_ecclayout nand_oob_16 = {
+static nand_ecclayout_t nand_oob_16 = {
         .eccbytes = 6,
         .eccpos = {0, 1, 2, 3, 6, 7},
         .oobfree = {{.offset = 8, .length = 8}},
 };
 
-static struct nand_ecclayout nand_oob_64 = {
+static nand_ecclayout_t nand_oob_64 = {
         .eccbytes = 24,
         .eccpos = {40, 41, 42, 43, 44, 45, 46, 47,
                    48, 49, 50, 51, 52, 53, 54, 55,
@@ -35,6 +35,6 @@ static struct nand_ecclayout nand_oob_64 = {
         .oobfree = {{.offset = 2, .length = 38}},
 };
 
-static struct nand_ecclayout nand_oob_user = {0};
+static nand_ecclayout_t nand_oob_user = {0};
 
 #endif

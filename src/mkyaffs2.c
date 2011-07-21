@@ -360,8 +360,7 @@ mkyaffs2_yaffs1_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 	written = mkyaffs2_tag2spare(spare, (unsigned char *)&pt,
 				     sizeof(struct yaffs_packed_tags1) -
 				     sizeof(pt.should_be_ff));
-	if (written != sizeof(struct yaffs_packed_tags1) -
-		       sizeof(pt.should_be_ff))
+	if (written < 0)
 		return -1;
 
 	/* write a whole "chunk + spare" back to the image */
@@ -411,7 +410,7 @@ mkyaffs2_yaffs2_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 	memset(spare, 0xff, mkyaffs2_sparesize);
 	written = mkyaffs2_tag2spare(spare, (unsigned char *)&pt,
 				     sizeof(struct yaffs_packed_tags2));
-	if (written != sizeof(struct yaffs_packed_tags2))
+	if (written < 0)
 		return -1;
 
 	/* write a whole "chunk + spare" back to the image */
@@ -821,6 +820,7 @@ mkyaffs2_load_spare (const char *oobfile)
 	return 0;
 }
 
+
 /*----------------------------------------------------------------------------*/
 
 static int
@@ -851,10 +851,10 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 	}
 
 	/* stage 1: scanning direcotry */
+	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
 	MKYAFFS2_PRINT("stage 1: scanning directory \"%s\"... [*]",
 			mkyaffs2_curfile);
 
-	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
 	retval = mkyaffs2_scan_dir(NULL);
 	if (retval < 0) {
 		MKYAFFS2_ERROR("\nerrors while scanning \"%s\"\n", dirpath);

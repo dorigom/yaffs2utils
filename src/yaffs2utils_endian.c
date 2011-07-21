@@ -19,9 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "yaffs_packedtags1.h"
-#include "yaffs_packedtags2.h"
-
 #include "yaffs2utils_endian.h"
 
 /*-------------------------------------------------------------------------*/

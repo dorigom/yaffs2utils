@@ -19,6 +19,9 @@
 #ifndef _YAFFS2UTILS_ENDIAN_H
 #define _YAFFS2UTILS_ENDIAN_H
 
+#include "yaffs_packedtags1.h"
+#include "yaffs_packedtags2.h"
+
 #ifdef __MACH__
 #include <libkern/OSByteOrder.h>
 #else

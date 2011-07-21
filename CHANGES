@@ -1,3 +1,21 @@
+2011-07-21	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.1
+-------------
+
+	* mkyaffs2
+	- Fix #14: oobfree.
+	  - The "mkyaffs2" will skip checking whether the spare size is enough.
+
+	* unspare2
+	- Enable unspare2 in Makefilie.
+	- Replace "struct nand_ecclayout" with "nand_ecclayout_t".
+	- Fix typo issues.
+
+	* others
+	- Use "mtd/mtd-user.h" instead of "yaffs2utils_ecc.h".
+
+
 2011-07-07	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.0

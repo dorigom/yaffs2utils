@@ -49,7 +49,7 @@ UNSPARE2SRCS	= unspare2.c
 UNSPARE2OBJS	= $(UNSPARE2SRCS:.c=.o)
 
 
-all: mkyaffs2 unyaffs2
+all: mkyaffs2 unyaffs2 unspare2
 
 mkyaffs2: $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
