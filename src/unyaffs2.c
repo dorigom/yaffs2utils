@@ -182,7 +182,7 @@ static char unyaffs2_linkfile[PATH_MAX + PATH_MAX] = {0};
 static LIST_HEAD(unyaffs2_hardlink_list);	/* hardlink */
 static LIST_HEAD(unyaffs2_specfile_list);	/* specfied files */
 
-static struct nand_ecclayout *unyaffs2_oobinfo = NULL;
+static nand_ecclayout_t *unyaffs2_oobinfo = NULL;
 
 static struct unyaffs2_fstree unyaffs2_objtree = {0};
 static struct list_head unyaffs2_objtable[UNYAFFS2_OBJTABLE_SIZE];
@@ -274,12 +274,12 @@ unyaffs2_objtable_init (void)
 static inline void
 unyaffs2_objtable_exit (void)
 {
-	unsigned n;
-	struct list_head *p;
+	unsigned i;
+	struct list_head *p, *n;
 	struct unyaffs2_obj *obj;
 
-	for (n = 0; n < UNYAFFS2_OBJTABLE_SIZE; n++) {
-		list_for_each(p, &unyaffs2_objtable[n]) {
+	for (i = 0; i < UNYAFFS2_OBJTABLE_SIZE; i++) {
+		list_for_each_safe(p, n, &unyaffs2_objtable[i]) {
 			obj = list_entry(p, unyaffs2_obj_t, hashlist);
 			unyaffs2_obj_free(obj);
 		}
@@ -345,7 +345,7 @@ unyaffs2_specfile_lookup (const char *path)
 	struct list_head *p;
 	size_t len;
 
-	list_for_each (p, &unyaffs2_specfile_list) {
+	list_for_each(p, &unyaffs2_specfile_list) {
 		spec = list_entry(p, unyaffs2_specfile_t, list);
 		if (!strncmp(path, spec->path, strlen(spec->path))) {
 			len = strlen(spec->path);
@@ -398,9 +398,9 @@ static void
 unyaffs2_specfile_exit (void)
 {
 	struct unyaffs2_specfile *spec;
-	struct list_head *p;
+	struct list_head *p, *n;
 
-	list_for_each (p, &unyaffs2_specfile_list) {
+	list_for_each_safe(p, n, &unyaffs2_specfile_list) {
 		spec = list_entry(p, unyaffs2_specfile_t, list);
 		if (spec->path)
 			free(spec->path);
@@ -658,7 +658,7 @@ unyaffs2_scan_img_status (unsigned status)
 static int
 unyaffs2_scan_img (void)
 {
-	off_t offset;
+	off_t offset = 0;
 #ifdef _HAVE_MMAP
 	size_t remains;
 #else
@@ -1274,24 +1274,26 @@ next:
 static int
 unyaffs2_load_spare (const char *oobfile)
 {
-	int fd;
+	int fd, retval = 0;
 	ssize_t reads;
 
 	if (oobfile == NULL)
 		return 0;
 
-	if ((fd = open(oobfile, O_RDWR)) < 0) {
+	if ((fd = open(oobfile, O_RDONLY)) < 0) {
 		UNYAFFS2_DEBUG("open oob image failed\n");
 		return -1;
 	}
 
-	reads = safe_read(fd, &nand_oob_user, sizeof(struct nand_ecclayout));
-	if (reads != sizeof(struct nand_ecclayout)) {
+	reads = safe_read(fd, &nand_oob_user, sizeof(nand_ecclayout_t));
+	if (reads != sizeof(nand_ecclayout_t)) {
 		UNYAFFS2_DEBUG("parse oob image failed\n");
-		return -1;
+		retval = -1;
 	}
 
-	return 0;
+	close(fd);
+
+	return retval;
 }
 
 /*-------------------------------------------------------------------------*/

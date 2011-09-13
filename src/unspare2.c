@@ -165,7 +165,7 @@ main (int argc, char **argv)
 	{
 		switch (option) {
 		case 'e':
-			unspare2_flags &= UNSPARE2_FLAGS_ENDIAN;
+			unspare2_flags |= UNSPARE2_FLAGS_ENDIAN;
 			break;
 		case 'h':
 			unspare2_helper();

@@ -1,3 +1,29 @@
+2011-09-13	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.2
+-------------
+
+	* mkyaffs2
+	- Fix #17: Can't compile on current Ubuntu
+	  - Replace "struct nand_ecclayout" with "nand_ecclayout_t".
+	- Fix #20: Various defects.
+
+	* unyaffs2 
+	- Fix #17: Can't compile on current Ubuntu
+	  - Replace "struct nand_ecclayout" with "nand_ecclayout_t".
+	- Fix #19: Parsing OOB file fails when it is read-only.
+	- Fix #20: Various defects.
+
+	* unspare2
+	- Fix #18: unspare2's -e parameter does not work.
+
+	* others
+	- Fix typo in "CHANGES".
+	- Fix un-matched version string in "yaffs2utils.h".
+	- Merge the latest YAFFS2 to 20110815 from the official release.
+	- Remove the unused file "yaffs2utils_mtd.h"
+
+
 2011-07-21	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.1
@@ -13,7 +39,7 @@ Version 0.2.1
 	- Fix typo issues.
 
 	* others
-	- Use "mtd/mtd-user.h" instead of "yaffs2utils_ecc.h".
+	- Use "mtd/mtd-user.h" instead of "yaffs2utils_mtd.h".
 
 
 2011-07-07	Luen-Yung Lin <penguin.lin@gmail.com>

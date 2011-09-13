@@ -120,7 +120,7 @@ static int mkyaffs2_image_fd = -1;
 static char mkyaffs2_curfile[PATH_MAX + PATH_MAX] = {0};
 static char mkyaffs2_linkfile[PATH_MAX] = {0};
 
-static struct nand_ecclayout *mkyaffs2_oobinfo = NULL;
+static nand_ecclayout_t *mkyaffs2_oobinfo = NULL;
 static int (*mkyaffs2_writechunk)(unsigned, unsigned, unsigned) = NULL;
 
 static unsigned mkyaffs2_bufsize = 0;
@@ -202,12 +202,12 @@ mkyaffs2_objtable_init (void)
 static inline void
 mkyaffs2_objtable_exit (void)
 {
-	unsigned n;
+	unsigned i;
 	struct mkyaffs2_obj *obj;
-	struct list_head *p;
+	struct list_head *p, *n;
 
-	for (n = 0; n < MKYAFFS2_OBJTABLE_SIZE; n++) {
-		list_for_each(p, &mkyaffs2_objtable[n]) {
+	for (i = 0; i < MKYAFFS2_OBJTABLE_SIZE; i++) {
+		list_for_each_safe(p, n, &mkyaffs2_objtable[i]) {
 			obj = list_entry(p, struct mkyaffs2_obj, hashlist);
 			mkyaffs2_obj_free(obj);
 		}
@@ -800,7 +800,7 @@ next:
 static int
 mkyaffs2_load_spare (const char *oobfile)
 {
-	int fd;
+	int fd, retval = 0;
 	ssize_t reads;
 
 	if (oobfile == NULL)
@@ -811,13 +811,15 @@ mkyaffs2_load_spare (const char *oobfile)
 		return -1;
 	}
 
-	reads = safe_read(fd, &nand_oob_user, sizeof(struct nand_ecclayout));
-	if (reads != sizeof(struct nand_ecclayout)) {
+	reads = safe_read(fd, &nand_oob_user, sizeof(nand_ecclayout_t));
+	if (reads != sizeof(nand_ecclayout_t)) {
 		MKYAFFS2_DEBUG("parse oob image failed\n");
-		return -1;
+		retval = -1;
 	}
 
-	return 0;
+	close(fd);
+
+	return retval;
 }
 
 
