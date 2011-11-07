@@ -439,7 +439,7 @@ mkyaffs2_write_oh (struct mkyaffs2_obj *obj,
 	oh.parent_obj_id = obj->parent_obj->obj_id;
 	strncpy(oh.name, obj->name, YAFFS_MAX_NAME_LENGTH);
 	if (strlen(obj->name) > YAFFS_MAX_NAME_LENGTH && MKYAFFS2_ISVERBOSE)
-		MKYAFFS2_WARN("file name will be truncated\n");
+		MKYAFFS2_WARN("file name is too long, it will be truncated\n");
 	
 	if(type != YAFFS_OBJECT_TYPE_HARDLINK) {
 		oh.yst_mode = s->st_mode;
@@ -491,14 +491,15 @@ mkyaffs2_write_regfile (const char *fpath, unsigned obj_id)
 
 	fd = open(fpath, O_RDONLY);
 	if (fd < 0) {
-		MKYAFFS2_DEBUG("cannot open the file: %s\n", fpath);
+		MKYAFFS2_DEBUG("cannot open the file: '%s'\n", fpath);
 		return -1;
 	}
 
 	memset(datbuf, 0xff, mkyaffs2_chunksize);
 	while((bytes = safe_read(fd, datbuf, mkyaffs2_chunksize)) != 0) {
 		if (bytes < 0) {
-			MKYAFFS2_DEBUG("error while reading file %s\n", fpath);
+			MKYAFFS2_DEBUG("error while reading file '%s'\n",
+					fpath);
 			retval = bytes;
 			break;
 		}
@@ -506,7 +507,8 @@ mkyaffs2_write_regfile (const char *fpath, unsigned obj_id)
 		/* write buffer */
 		retval = mkyaffs2_writechunk(bytes, obj_id, ++chunk);
 		if (retval) {
-			MKYAFFS2_DEBUG("error while writing file %s\n", fpath);
+			MKYAFFS2_DEBUG("error while writing file '%s'\n",
+					fpath);
 			break;
 		}
 
@@ -561,14 +563,14 @@ mkyaffs2_scan_dir (struct mkyaffs2_obj *parent)
 		if (stat(mkyaffs2_curfile[0] == '\0' ? 
 			 "." : mkyaffs2_curfile, &s) ||
 		    !S_ISDIR(s.st_mode)) {
-			MKYAFFS2_DEBUG("root object is NOT a directory (%s)\n",
+			MKYAFFS2_DEBUG("root is NOT a directory ('%s')\n",
 					mkyaffs2_curfile);
 			return -1;
 		}
 
 		obj = mkyaffs2_obj_alloc();
 		if (obj == NULL) {
-			MKYAFFS2_DEBUG("allocate object failed for %s\n",
+			MKYAFFS2_DEBUG("allocate object failed for '%s'\n",
 					mkyaffs2_curfile);
 			return -1;
 		}
@@ -581,7 +583,7 @@ mkyaffs2_scan_dir (struct mkyaffs2_obj *parent)
 
 	dir = opendir(mkyaffs2_curfile[0] == '\0' ? "." : mkyaffs2_curfile);
 	if (dir == NULL) {
-		MKYAFFS2_ERROR("cannot open the directory: %s\n",
+		MKYAFFS2_ERROR("cannot open the directory: '%s'\n",
 				mkyaffs2_curfile);
 		return -1;
 	}
@@ -601,7 +603,7 @@ mkyaffs2_scan_dir (struct mkyaffs2_obj *parent)
 
 		obj = mkyaffs2_obj_alloc();
 		if (obj == NULL) {
-			MKYAFFS2_DEBUG("allocate object failed for %s\n",
+			MKYAFFS2_DEBUG("allocate object failed for '%s'\n",
 					mkyaffs2_curfile);
 			return -1;
 		}
@@ -611,7 +613,7 @@ mkyaffs2_scan_dir (struct mkyaffs2_obj *parent)
 		list_add_tail(&obj->siblings, &parent->children);
 		mkyaffs2_scan_dir_status(++mkyaffs2_objtree.objs);
 
-		MKYAFFS2_DEBUG("object \"%s\" : %s\n", 
+		MKYAFFS2_DEBUG("object '%s' : '%s'\n", 
 				obj->name, mkyaffs2_curfile);
 
 		if (!lstat(mkyaffs2_curfile, &s) && S_ISDIR(s.st_mode))
@@ -648,7 +650,7 @@ mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 		if (stat(mkyaffs2_curfile[0] == '\0' ?
 			 "." : mkyaffs2_curfile, &s) < 0 ||
 		    !S_ISDIR(s.st_mode)) {
-			MKYAFFS2_DEBUG("root object is NOT a directory (%s)\n",
+			MKYAFFS2_DEBUG("root object is NOT a directory '%s'\n",
 					mkyaffs2_curfile);
 			return -1;
 		}
@@ -689,7 +691,7 @@ mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 
 	retval = lstat(mkyaffs2_curfile, &s);
 	if (retval) {
-		MKYAFFS2_VERBOSE("error while processing file \"%s\" ",
+		MKYAFFS2_VERBOSE("error while processing file '%s' ",
 				 mkyaffs2_curfile);
 		MKYAFFS2_VERBOSE("(permission denied?)");
 		goto next;
@@ -703,7 +705,7 @@ mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 	if (obj->obj_id > YAFFS_MAX_OBJID && MKYAFFS2_ISVERBOSE)
 		MKYAFFS2_WARN("too many files!\n ");
 
-	MKYAFFS2_VERBOSE("object %u, %s is a ", 
+	MKYAFFS2_VERBOSE("object %u, '%s' is a ", 
 			 obj->obj_id, mkyaffs2_curfile);
 
 	/* hardlink? */
@@ -732,7 +734,7 @@ mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 		       sizeof(mkyaffs2_linkfile));
 		readlink(mkyaffs2_curfile, mkyaffs2_linkfile,
 			 sizeof(mkyaffs2_linkfile) - 1);
-		MKYAFFS2_VERBOSE("symbolic link to %s\n",
+		MKYAFFS2_VERBOSE("symbolic link to '%s'\n",
 				 mkyaffs2_linkfile);
 		ylink.alias = mkyaffs2_linkfile;
 		retval = mkyaffs2_write_oh(obj, &s,
@@ -770,7 +772,7 @@ mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 
 next:
 	if (retval) {
-		MKYAFFS2_ERROR("%cerror while parsing \"%s\"\n",
+		MKYAFFS2_ERROR("%cerror while parsing '%s'\n",
 				MKYAFFS2_ISVERBOSE ? '\0' : '\n',
 				mkyaffs2_curfile);
 	}
@@ -847,19 +849,19 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 
 	mkyaffs2_image_fd = open(imgfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (mkyaffs2_image_fd < 0) {
-		MKYAFFS2_ERROR("cannot open the image file: %s\n", imgfile);
+		MKYAFFS2_ERROR("cannot open the image file: '%s'\n", imgfile);
 		retval = -1;
 		goto free_and_out;
 	}
 
 	/* stage 1: scanning direcotry */
 	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
-	MKYAFFS2_PRINT("stage 1: scanning directory \"%s\"... [*]",
+	MKYAFFS2_PRINT("stage 1: scanning directory '%s'... [*]",
 			mkyaffs2_curfile);
 
 	retval = mkyaffs2_scan_dir(NULL);
 	if (retval < 0) {
-		MKYAFFS2_ERROR("\nerrors while scanning \"%s\"\n", dirpath);
+		MKYAFFS2_ERROR("\nerrors while scanning '%s'\n", dirpath);
 		retval = -1;
 		goto free_and_out;
 	}
@@ -868,7 +870,7 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 			mkyaffs2_objtree.objs);
 
 	/* stage 2: making a image */
-	MKYAFFS2_PRINT("stage 2: making image \"%s\"\n", imgfile);
+	MKYAFFS2_PRINT("stage 2: making image '%s'\n", imgfile);
 
 	MKYAFFS2_PROGRESS_INIT();
 
@@ -892,21 +894,17 @@ static int
 mkyaffs2_helper (void)
 {
 	MKYAFFS2_HELP("Usage: ");
-	MKYAFFS2_HELP("mkyaffs2 [-e] [-h] [-v] [-p size] [-o file] dirname imgfile\n");
+	MKYAFFS2_HELP("mkyaffs2 [-h] [-e] [-v] [-p size] [-o file] "
+		      "dirname imgfile\n");
 	MKYAFFS2_HELP("mkyaffs2: A utility to make the yaffs2 image\n");
 	MKYAFFS2_HELP("version: %s\n", YAFFS2UTILS_VERSION);
 	MKYAFFS2_HELP("options:\n");
-	MKYAFFS2_HELP("	-h	");
-	MKYAFFS2_HELP("display this help message and exit.\n");
-	MKYAFFS2_HELP("	-e	");
-	MKYAFFS2_HELP("convert endian differed from local machine.\n");
-	MKYAFFS2_HELP("	-v	");
-	MKYAFFS2_HELP("verbose details instead of progress bar.\n");
-	MKYAFFS2_HELP("	-p size	");
-	MKYAFFS2_HELP("page size of target device ");
-	MKYAFFS2_HELP("(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
-	MKYAFFS2_HELP("	-o file	");
-	MKYAFFS2_HELP("load external oob image file.\n");
+	MKYAFFS2_HELP("	-h	display this help message and exit.\n");
+	MKYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
+	MKYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
+	MKYAFFS2_HELP("	-p size	page size of target device "
+		      "(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
+	MKYAFFS2_HELP("	-o file	load external oob image file.\n");
 
 	return -1;
 }
@@ -1008,7 +1006,7 @@ main (int argc, char *argv[])
 	}
 
 	if (stat(dirpath, &statbuf) < 0 && !S_ISDIR(statbuf.st_mode)) {
-		MKYAFFS2_ERROR("ROOT is not a directory (%s)\n", dirpath);
+		MKYAFFS2_ERROR("ROOT is not a directory '%s'\n", dirpath);
 		return -1;
 	}
 

@@ -18,15 +18,14 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-OSTYPE		= $(shell uname -s|awk '{print tolower($$0)}')
-
 CROSS		=
 CC		= $(CROSS)gcc
 
-CFLAGS		=  -I. -I./yaffs2 -O2 -Wall
-CFLAGS		+= -Wshadow -Wpointer-arith -Wwrite-strings -Wstrict-prototypes \
-		   -Wmissing-declarations -Wmissing-prototypes -Wredundant-decls \
-		   -Wnested-externs -Winline
+CFLAGS		=  -I. -I./yaffs2
+CFLAGS		+= -O2
+CFLAGS		+= -Wall -Wshadow -Winline -Wpointer-arith -Wnested-externs \
+		   -Wwrite-strings -Wstrict-prototypes -Wmissing-declarations \
+		   -Wmissing-prototypes -Wredundant-decls \
 
 CFLAGS		+= -D_HAVE_MMAP
 
@@ -48,8 +47,15 @@ UNYAFFS2OBJS	= $(UNYAFFS2SRCS:.c=.o)
 UNSPARE2SRCS	= unspare2.c
 UNSPARE2OBJS	= $(UNSPARE2SRCS:.c=.o)
 
+TARGET		= mkyaffs2 unyaffs2 unspare2
 
-all: mkyaffs2 unyaffs2 unspare2
+INSTALLDIR	= /bin
+
+
+all: $(TARGET)
+
+install:
+	cp $(TARGET) $(INSTALLDIR)
 
 mkyaffs2: $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
@@ -65,6 +71,6 @@ clean:
 	       $(MKYAFFS2OBJS) $(UNYAFFS2OBJS) $(UNSPARE2OBJS)
 
 distclean: clean
-	rm -rf mkyaffs2 unyaffs2 unspare2
+	rm -rf $(TARGET)
 
-.PHONY: all clean distclean mkyaffs2 unyaffs2 unspare2
+.PHONY: all clean distclean $(TARGET)

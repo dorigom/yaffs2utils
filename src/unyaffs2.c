@@ -94,6 +94,7 @@ typedef struct unyaffs2_obj {
 
 	unsigned uid;			/* owner uid */
 	unsigned gid;			/* owner gid */
+
 	unsigned atime;
 	unsigned mtime;
 	unsigned ctime;
@@ -858,7 +859,7 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 
 	outfd = open(fpath, O_RDWR | O_CREAT | O_TRUNC, obj->mode);
 	if (outfd < 0) {
-		fprintf(stderr, "cannot create file %s\n", fpath);
+		fprintf(stderr, "cannot create file '%s'\n", fpath);
 		return -1;
 	}
 
@@ -868,7 +869,7 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 	/* stretch the file */
 	if (lseek(outfd, fsize - 1, SEEK_SET) < 0 ||
 	    safe_write(outfd, "", 1) != 1) {
-		UNYAFFS2_ERROR("cannot stretch the file %s\n", fpath);
+		UNYAFFS2_ERROR("cannot stretch the file '%s'\n", fpath);
 		goto out;
 	}
 
@@ -876,7 +877,7 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 	outaddr = mmap(NULL, fsize, PROT_WRITE | PROT_READ,
 		       MAP_SHARED, outfd, 0);
 	if (outaddr == NULL) {
-		UNYAFFS2_ERROR("cannot mmap the file %s\n", fpath);
+		UNYAFFS2_ERROR("cannot mmap the file '%s'\n", fpath);
 		goto out;
 	}
 
@@ -890,7 +891,7 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 		written = remains < tag.n_bytes ? remains : tag.n_bytes;
 		memcpy(curaddr, addr, written);
 		if (memcmp(curaddr, addr, written)) {
-			UNYAFFS2_ERROR("error while writing file %s\n", fpath);
+			UNYAFFS2_ERROR("error while writing file '%s'\n", fpath);
 			break;
 		}
 
@@ -920,7 +921,7 @@ unyaffs2_extract_file (const int fd, off_t off,
 
 	outfd = open(fpath, O_WRONLY | O_CREAT | O_TRUNC, obj->mode);
 	if (outfd < 0) {
-		UNYAFFS2_ERROR("cannot create file %s\n", fpath);
+		UNYAFFS2_ERROR("cannot create file '%s'\n", fpath);
 		return -1;
 	}
 
@@ -931,7 +932,7 @@ unyaffs2_extract_file (const int fd, off_t off,
 	       (r = safe_read(fd, unyaffs2_datbuf, unyaffs2_bufsize)) != 0)
 	{
 		if (r != unyaffs2_bufsize) {
-			UNYAFFS2_DEBUG("error while reading image for %s\n",
+			UNYAFFS2_DEBUG("error while reading image for '%s'\n",
 					fpath);
 			break;
 		}
@@ -942,7 +943,7 @@ unyaffs2_extract_file (const int fd, off_t off,
 
 		w = safe_write(outfd, unyaffs2_datbuf, tag.n_bytes);
 		if (w != tag.n_bytes) {
-			UNYAFFS2_DEBUG("error while writing file %s", fpath);
+			UNYAFFS2_DEBUG("error while writing file '%s'", fpath);
 			break;
 		}
 
@@ -1181,7 +1182,7 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 
 	switch (obj->type) {
 	case YAFFS_OBJECT_TYPE_FILE:
-		UNYAFFS2_VERBOSE("file: %s\n", dstfile);
+		UNYAFFS2_VERBOSE("file: '%s'\n", dstfile);
 		obj->variant.file.file_size = oh.file_size;
 		retval =
 #ifdef _HAVE_MMAP
@@ -1196,11 +1197,11 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 #endif
 		break;
 	case YAFFS_OBJECT_TYPE_DIRECTORY:
-		UNYAFFS2_VERBOSE("dir: %s\n", dstfile);
+		UNYAFFS2_VERBOSE("dir: '%s'\n", dstfile);
 		retval = unyaffs2_mkdir(dstfile, 0755);
 		break;
 	case YAFFS_OBJECT_TYPE_SYMLINK:
-		UNYAFFS2_VERBOSE("symlink: %s\n", dstfile);
+		UNYAFFS2_VERBOSE("symlink: '%s'\n", dstfile);
 		retval = -1;
 		obj->variant.symlink.alias = strdup(oh.alias);
 		if (obj->variant.symlink.alias) { 
@@ -1213,7 +1214,7 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 		 * all hardlink are listed into the unyaffs2_hardlink_list,
 		 * and they will be travel and extracted in the another process.
 		 */
-		UNYAFFS2_VERBOSE("hardlink: %s\n", dstfile);
+		UNYAFFS2_VERBOSE("hardlink: '%s'\n", dstfile);
 		obj->variant.hardlink.equiv_obj =
 			unyaffs2_objtable_lookup(oh.equiv_id);
 		list_add_tail(&obj->hardlink, &unyaffs2_hardlink_list);
@@ -1222,20 +1223,21 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 		if ((obj->mode & S_IFMT) &
 		    (S_IFBLK | S_IFCHR | S_IFIFO | S_IFSOCK)) {
 			obj->variant.dev.rdev = oh.yst_rdev;
-			UNYAFFS2_VERBOSE("dev: %s\n", dstfile);
+			UNYAFFS2_VERBOSE("dev: '%s'\n", dstfile);
 			retval = mknod(dstfile,
 				       obj->mode, obj->variant.dev.rdev);
 		}
 		break;
 	default:
 		if (UNYAFFS2_ISVERBOSE)
-			UNYAFFS2_WARN("unsupported type: %s\n", dstfile);
+			UNYAFFS2_WARN("unsupported type (%08x) for '%s'\n",
+				      obj->type, dstfile);
 		break;
 	}
 
 next:
 	if (retval) {
-		UNYAFFS2_ERROR("%cerror while extracting %s\n",
+		UNYAFFS2_ERROR("%cerror while extracting '%s'\n",
 				UNYAFFS2_ISVERBOSE ? '\0' : '\n',
 				unyaffs2_curfile);
 	}
@@ -1307,20 +1309,21 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 
 	/* verify whether the input image is valid */
 	if (stat(imgfile, &statbuf) < 0 && !S_ISREG(statbuf.st_mode)) {
-		UNYAFFS2_ERROR("%s is not a regular file\n", imgfile);
+		UNYAFFS2_ERROR("image is not a regular file: '%s'\n", imgfile);
 		return -1;
 	}
 
 	if ((statbuf.st_size % (unyaffs2_chunksize + unyaffs2_sparesize)) != 0)
 	{
-		UNYAFFS2_ERROR("image size is NOT a mutiple of %u + %u\n",
-				unyaffs2_chunksize, unyaffs2_sparesize);
+		UNYAFFS2_ERROR("image size (%lu) is NOT a mutiple of %u + %u\n",
+				statbuf.st_size, unyaffs2_chunksize,
+				unyaffs2_sparesize);
 		return -1;
 	}
 
 	unyaffs2_image_fd = open(imgfile, O_RDONLY);
 	if (unyaffs2_image_fd < 0) {
-		UNYAFFS2_ERROR("cannot open the image file %s\n", imgfile);
+		UNYAFFS2_ERROR("cannot open the image file: '%s'\n", imgfile);
 		return -1;
 	}
 
@@ -1348,7 +1351,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	if (unyaffs2_mkdir(dirpath, 0755) < 0 || chdir(dirpath) < 0 ||
 	    (root = unyaffs2_create_fakeroot(".")) == NULL) {
 		UNYAFFS2_ERROR("cannot access the directory ");
-		UNYAFFS2_ERROR("%s (permission deny?)", dirpath);
+		UNYAFFS2_ERROR("'%s' (permission deny?)", dirpath);
 		retval = -1;
 		goto free_and_out;
 	}
@@ -1359,10 +1362,10 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	unyaffs2_objtable_insert(root);
 
 	/* stage 1: scanning image */
-	UNYAFFS2_PRINT("scanning image \"%s\"... [*]", imgfile);
+	UNYAFFS2_PRINT("scanning image '%s'... [*]", imgfile);
 
 	if (unyaffs2_scan_img() < 0) {
-		UNYAFFS2_ERROR("\nerror while scanning \"%s\"\n ", imgfile);
+		UNYAFFS2_ERROR("\nerror while scanning '%s'\n ", imgfile);
 		retval = -1;
 		goto exit_and_out;
 	}
@@ -1381,7 +1384,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	UNYAFFS2_PRINT("total valid objects: %d\n", unyaffs2_objtree.objs);
 
 	/* stage 2: extracting image */
-	UNYAFFS2_PRINT("extracting image into \"%s\"\n", dirpath);
+	UNYAFFS2_PRINT("extracting image into '%s'\n", dirpath);
 
 	UNYAFFS2_PROGRESS_INIT();
 	unyaffs2_image_objs = 0;
@@ -1399,7 +1402,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	if (!list_empty(&unyaffs2_specfile_list)) {
 		struct list_head *p;
 		struct unyaffs2_specfile *spec;
-		list_for_each (p, &unyaffs2_specfile_list) {
+		list_for_each(p, &unyaffs2_specfile_list) {
 			spec = list_entry(p, unyaffs2_specfile_t, list);
 			if (spec->obj) {
 				memset(unyaffs2_curfile, 0,
@@ -1408,7 +1411,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 			}
 			else {
 				retval = -1;
-				UNYAFFS2_ERROR("File NOT found: %s\n",
+				UNYAFFS2_ERROR("File NOT found: '%s'\n",
 						spec->path);
 			}
 		}
@@ -1439,23 +1442,18 @@ static int
 unyaffs2_helper (void)
 {
 	UNYAFFS2_HELP("Usage: ");
-	UNYAFFS2_HELP("unyaffs2 [-e] [-h] [-v] [-p size] imgfile dirname\n");
+	UNYAFFS2_HELP("unyaffs2 [-h] [-e] [-v] [-p size] [-o file] [-f file] "
+		      "imgfile dirname\n");
 	UNYAFFS2_HELP("unyaffs2: A utility to extract the yaffs2 image\n");
 	UNYAFFS2_HELP("version: %s\n", YAFFS2UTILS_VERSION);
 	UNYAFFS2_HELP("options:\n");
-	UNYAFFS2_HELP("	-h	");
-	UNYAFFS2_HELP("display this help message and exit.\n");
-	UNYAFFS2_HELP("	-e	");
-	UNYAFFS2_HELP("convert endian differed from local machine.\n");
-	UNYAFFS2_HELP("	-v	");
-	UNYAFFS2_HELP("verbose details instead of progress bar.\n");
-	UNYAFFS2_HELP("	-p size	");
-	UNYAFFS2_HELP("page size of target device ");
-	UNYAFFS2_HELP("(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
-	UNYAFFS2_HELP("	-o file	");
-	UNYAFFS2_HELP("load external oob image file.\n");;
-	UNYAFFS2_HELP("	-f file	");
-	UNYAFFS2_HELP("extract the specified file.\n");;
+	UNYAFFS2_HELP("	-h	display this help message and exit.\n");
+	UNYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
+	UNYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
+	UNYAFFS2_HELP("	-p size	page size of target device "
+		      "(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
+	UNYAFFS2_HELP("	-o file	load external oob image file.\n");;
+	UNYAFFS2_HELP("	-f file	extract the specified file.\n");;
 
 	return -1;
 }
@@ -1503,7 +1501,7 @@ main (int argc, char* argv[])
 		case 'f':
 			retval = unyaffs2_specfile_insert(optarg);
 			if (retval) {
-				UNYAFFS2_ERROR("cannot specify the file \"%s\"",
+				UNYAFFS2_ERROR("cannot specify the file '%s'",
 						optarg);
 				UNYAFFS2_ERROR("(invalid string ?)\n");
 				unyaffs2_specfile_exit();
@@ -1561,7 +1559,7 @@ main (int argc, char* argv[])
 	if (!retval) {
 		UNYAFFS2_PRINT("%coperation complete\n",
 				UNYAFFS2_ISVERBOSE ? '\n' : '\0');
-		UNYAFFS2_PRINT("files are extracted into %s\n", dirpath);
+		UNYAFFS2_PRINT("files are extracted into '%s'\n", dirpath);
 	}
 	else {
 		UNYAFFS2_ERROR("\noperation incomplete\n");

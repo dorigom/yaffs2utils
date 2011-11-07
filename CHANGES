@@ -1,3 +1,21 @@
+2011-10-31	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.3
+-------------
+
+	* mkyaffs2
+	- Fix typo.
+
+	* unyaffs2
+	- Fix typo.
+	- Fix help messages.
+
+	* others
+	- Fix #21: makefile improvements, prints improvements, additional check.
+	- Close #17: Can't compile on current Ubuntu (fixed in 0.2.2).
+	- Close #20: Various defects (fixed in 0.2.2).
+
+
 2011-09-13	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.2
