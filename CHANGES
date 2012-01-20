@@ -1,3 +1,18 @@
+2012-01-19	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.4
+-------------
+
+	* unyaffs2
+	- Fix #23: lchown after chmod destroies setuid/setgid.
+
+	* others
+	- Fix #22: Support unyaffs of yaffs2 img made from mkyaffs2image.
+	  - Add a "Compatibility" section in the README.
+	- Fix the "PATH_MAX" lack for OSX.
+	  - Include "syslimits.h" for OSX.
+
+
 2011-10-31	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.3

@@ -16,6 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
  
+#include "configs.h"
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -27,6 +29,9 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifdef _HAVE_OSX_SYSLIMITS
+#include <sys/syslimits.h>
+#endif
 
 #include "yaffs_trace.h"
 #include "yaffs_packedtags1.h"

@@ -16,10 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#if defined(__linux__) || defined (__FreeBSD__) || defined(__NetBSD__) || \
-    (defined(__APPLE__) && defined(__MACH__))
- #define _HAVE_LUTIMES  1
-#endif
+#include "configs.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -37,6 +34,9 @@
 #include <sys/time.h>
 #else
 #include <utime.h>
+#endif
+#ifdef _HAVE_OSX_SYSLIMITS
+#include <sys/syslimits.h>
 #endif
 
 #include "yaffs_packedtags1.h"
@@ -581,11 +581,11 @@ unyaffs2_obj_chattr (const char *fpath, struct unyaffs2_obj *obj)
 	utime(fpath, &ftime);
 #endif
 
-	/* mode */
-	chmod(fpath, obj->mode);
-
 	/* owner */
 	lchown(fpath, obj->uid, obj->gid);
+
+	/* mode */
+	chmod(fpath, obj->mode);
 }
 
 static int

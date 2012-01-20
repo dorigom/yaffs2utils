@@ -22,7 +22,7 @@
 #include "yaffs_packedtags1.h"
 #include "yaffs_packedtags2.h"
 
-#ifdef __MACH__
+#if defined(__APPLE__) && defined(__MACH__)
 #include <libkern/OSByteOrder.h>
 #else
 #include <asm/byteorder.h>
