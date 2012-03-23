@@ -18,7 +18,30 @@
 
 #include "yaffs_utils.h"
 
-#define YAFFS_MAX_CHUNK_ID		0x000fffff
+/*
+ * Tnodes form a tree with the tnodes in "levels"
+ * Levels greater than 0 hold 8 slots which point to other tnodes.
+ * Those at level 0 hold 16 slots which point to chunks in NAND.
+ *
+ * A maximum level of 8 thust supports files of size up to:
+ *
+ * 2^(3*MAX_LEVEL+4)
+ *
+ * Thus a max level of 8 supports files with up to 2^^28 chunks which gives
+ * a maximum file size of arounf 51Gbytees with 2k chunks.
+ */
+#define YAFFS_NTNODES_LEVEL0		16
+#define YAFFS_TNODES_LEVEL0_BITS	4
+#define YAFFS_TNODES_LEVEL0_MASK	0xf
+
+#define YAFFS_NTNODES_INTERNAL		(YAFFS_NTNODES_LEVEL0 / 2)
+#define YAFFS_TNODES_INTERNAL_BITS	(YAFFS_TNODES_LEVEL0_BITS - 1)
+#define YAFFS_TNODES_INTERNAL_MASK	0x7
+#define YAFFS_TNODES_MAX_LEVEL		8
+#define YAFFS_TNODES_MAX_BITS		(YAFFS_TNODES_LEVEL0_BITS + \
+					YAFFS_TNODES_INTERNAL_BITS * \
+					YAFFS_TNODES_MAX_LEVEL)
+#define YAFFS_MAX_CHUNK_ID		((1 << YAFFS_TNODES_MAX_BITS) - 1)
 
 #define YAFFS_NOBJECT_BUCKETS		256
 
@@ -109,7 +132,7 @@ struct yaffs_ext_tags {
 
 	enum yaffs_obj_type extra_obj_type;	/* What object type? */
 
-	unsigned extra_length;		/* Length if it is a file */
+	loff_t extra_file_size;		/* Length if it is a file */
 	unsigned extra_equiv_id;	/* Equivalent object Id if it is a hard link */
 };
 
@@ -131,7 +154,7 @@ struct yaffs_obj_hdr {
 	u32 yst_ctime;
 
 	/* File size  applies to files only */
-	int file_size;
+	u32 file_size_low;
 
 	/* Equivalent object id applies to hard links only. */
 	int equiv_id;
@@ -148,7 +171,8 @@ struct yaffs_obj_hdr {
 	u32 inband_shadowed_obj_id;
 	u32 inband_is_shrink;
 
-	u32 reserved[2];
+	u32 file_size_high;
+	u32 reserved[1];
 	int shadows_obj;	/* This object header shadows the specified object if > 0 */
 
 	/* is_shrink applies to object headers written when wemake a hole. */

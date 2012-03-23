@@ -43,17 +43,18 @@
 #include "yaffs_packedtags2.h"
 #include "yaffs_trace.h"
 
-#include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
 #include "yaffs2utils_ecc.h"
 #include "yaffs2utils_list.h"
 #include "yaffs2utils_endian.h"
 #include "yaffs2utils_progress.h"
 
+#include "yaffs2utils_version.h"
+
 /*-------------------------------------------------------------------------*/
 
 typedef struct unyaffs2_file_var {
-	size_t file_size;
+	loff_t file_size;
 } unyaffs2_file_var_t;
 
 typedef struct unyaffs2_symlink_var {
@@ -516,6 +517,20 @@ unyaffs2_isempty (unsigned char *buf, unsigned size)
 		buf++;
 	}
 	return 1;
+}
+
+static inline loff_t
+unyaffs2_extract_oh_size (struct yaffs_obj_hdr *oh)
+{
+	loff_t retval;
+
+	if(~(oh->file_size_high))
+		retval = (((loff_t) oh->file_size_high) << 32) |
+			  (((loff_t) oh->file_size_low) & 0xFFFFFFFF);
+	else
+		retval = (loff_t) oh->file_size_low;
+
+	return retval;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1183,7 +1198,7 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 	switch (obj->type) {
 	case YAFFS_OBJECT_TYPE_FILE:
 		UNYAFFS2_VERBOSE("file: '%s'\n", dstfile);
-		obj->variant.file.file_size = oh.file_size;
+		obj->variant.file.file_size = unyaffs2_extract_oh_size(&oh);
 		retval =
 #ifdef _HAVE_MMAP
 		unyaffs2_extract_file_mmap(unyaffs2_mmapinfo.addr,

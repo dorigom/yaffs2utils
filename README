@@ -60,17 +60,22 @@ image while using the "mkyaffs2/unyaffs2" can create/extract the YAFFS image
 with the various oob layout for the different NAND devices.
 
 
-Compatibility
--------------
-As the discussion in the previous section "yaffs2utils", an image made by the
-official YAFFS2 tools (mkyaffs2image) can not be run on the native Linux,
-because its oob layout is different from the default one in the Linux MTD
-subsystem. For an image is requested to be created/extracted with the
-compatibilities of the one made by the official YFFS2 tool (mkyaffs2image)
-by using the "yaffs2uitls" package, some methods are described:
+Android
+-------
+Recently, I found that the most Android images are made from the official YAFFS2
+tool - "mkyaffs2image". As the discussion in the previous section "yaffs2utils",
+an image created by the official YAFFS2 tools (mkyaffs2image) can not be run on
+the native Linux, because its oob layout is different from the default one in
+the Linux MTD subsystem.
 
-1. Use "-o" option to specify the oob image, which can be available by using the
-   tool "unspare2" on the target device, while creating/extracting the image.
+For an image is requested to be created/extracted with the compatibilities of
+the one made by the official YFFS2 tool (mkyaffs2image), such as Android uses,
+some methods are described:
+
+1. Enable the CFLAGS in Makefile
+
+   #CFLAGS	+= _HAVE_ANDROID
+
 
 2. Modify the default the oob layout in the source by the following patch:
 
@@ -88,6 +93,9 @@ by using the "yaffs2uitls" package, some methods are described:
  
  static struct nand_ecclayout nand_oob_user = {0};
 --------------------------------------------------------------------
+
+3. Use "-o" option to specify the oob image, which can be available by using the
+   tool "unspare2" on the target device, while creating/extracting the image.
 
 
 LICENSE

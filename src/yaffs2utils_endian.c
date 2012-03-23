@@ -51,7 +51,7 @@ oh_endian_transform (struct yaffs_obj_hdr *oh)
 	oh->yst_ctime = ENDIAN_SWAP_32(oh->yst_ctime);
 #endif
 
-	oh->file_size = ENDIAN_SWAP_32(oh->file_size);
+	oh->file_size_low = ENDIAN_SWAP_32(oh->file_size_low);
 	oh->equiv_id = ENDIAN_SWAP_32(oh->equiv_id);
 	oh->yst_rdev = ENDIAN_SWAP_32(oh->yst_rdev);
 
@@ -64,7 +64,7 @@ oh_endian_transform (struct yaffs_obj_hdr *oh)
 
 	oh->inband_shadowed_obj_id = ENDIAN_SWAP_32(oh->inband_shadowed_obj_id);
 	oh->inband_is_shrink = ENDIAN_SWAP_32(oh->inband_is_shrink);
-	oh->reserved[0] = ENDIAN_SWAP_32(oh->reserved[0]);
+	oh->file_size_high = ENDIAN_SWAP_32(oh->file_size_high);
 	oh->reserved[1] = ENDIAN_SWAP_32(oh->reserved[1]);
 	oh->shadows_obj = ENDIAN_SWAP_32(oh->shadows_obj);
 	oh->is_shrink = ENDIAN_SWAP_32(oh->is_shrink);

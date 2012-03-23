@@ -1,3 +1,15 @@
+2012-03-22	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.5
+-------------
+
+	* others:
+	- Fix #26: Ordering of arguments prevents compile on certain systems.
+	- Fix #27: make error:"mkyaffs2.c:19:21: -
+		   error: configs.h:  No such file or directory.
+	- Merge the latest YAFFS2 to 20120227 from the official release.
+
+
 2012-01-19	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.4

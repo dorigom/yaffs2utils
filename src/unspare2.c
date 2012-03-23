@@ -31,9 +31,10 @@
 #include <sys/ioctl.h>
 #include <mtd/mtd-user.h>
 
-#include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
 #include "yaffs2utils_endian.h"
+
+#include "yaffs2utils_version.h"
 
 /*-------------------------------------------------------------------------*/
 

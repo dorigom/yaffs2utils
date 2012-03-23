@@ -37,12 +37,13 @@
 #include "yaffs_packedtags1.h"
 #include "yaffs_packedtags2.h"
 
-#include "yaffs2utils.h"
 #include "yaffs2utils_io.h"
 #include "yaffs2utils_ecc.h"
 #include "yaffs2utils_list.h"
 #include "yaffs2utils_endian.h"
 #include "yaffs2utils_progress.h"
+
+#include "yaffs2utils_version.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -458,7 +459,7 @@ mkyaffs2_write_oh (struct mkyaffs2_obj *obj,
 
 	switch (type) {
 	case YAFFS_OBJECT_TYPE_FILE:
-		oh.file_size = s->st_size;
+		oh.file_size_low = s->st_size;
 		break;
 	case YAFFS_OBJECT_TYPE_HARDLINK:
 		oh.equiv_id = ylink->equiv_obj->obj_id;
@@ -707,7 +708,7 @@ mkyaffs2_process_objtree (struct mkyaffs2_obj *obj)
 		obj->ino = s.st_ino;
 		obj->obj_id = ++mkyaffs2_image_obj_id;
 
-	if (obj->obj_id > YAFFS_MAX_OBJID && MKYAFFS2_ISVERBOSE)
+	if (obj->obj_id > YAFFS_MAX_OBJECT_ID && MKYAFFS2_ISVERBOSE)
 		MKYAFFS2_WARN("too many files!\n ");
 
 	MKYAFFS2_VERBOSE("object %u, '%s' is a ", 

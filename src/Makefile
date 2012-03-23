@@ -29,6 +29,8 @@ CFLAGS		+= -Wall -Wshadow -Winline -Wpointer-arith -Wnested-externs \
 
 CFLAGS		+= -D_HAVE_MMAP
 
+#CFLAGS		+= -D_HAVE_ANDROID
+
 LDFLAGS		+= -lm
 
 YAFFS2SRCS	= yaffs2/yaffs_hweight.c yaffs2/yaffs_ecc.c \
@@ -58,13 +60,13 @@ install:
 	cp $(TARGET) $(INSTALLDIR)
 
 mkyaffs2: $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS)
+	$(CC) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(MKYAFFS2OBJS) $(LDFLAGS)
 
 unyaffs2: $(YAFFS2OBJS) $(LIBOBJS) $(UNYAFFS2OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(UNYAFFS2OBJS)
+	$(CC) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(UNYAFFS2OBJS) $(LDFLAGS)
 
 unspare2: $(YAFFS2OBJS) $(LIBOBJS) $(UNSPARE2OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(UNSPARE2OBJS)
+	$(CC) -o $@ $(YAFFS2OBJS) $(LIBOBJS) $(UNSPARE2OBJS) $(LDFLAGS)
 
 clean:
 	rm -rf $(YAFFS2OBJS) $(LIBOBJS) \

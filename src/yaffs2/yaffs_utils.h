@@ -16,6 +16,8 @@
 #ifndef __YAFFS_UTILS_H__
 #define __YAFFS_UTILS_H__
 
+#include <sys/types.h>
+
 /* Definition of types */
 typedef unsigned char u8;
 typedef unsigned short u16;

@@ -16,20 +16,18 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2UTILS_H
-#define _YAFFS2UTILS_H
-
-#define YAFFS2UTILS_VERSION	"0.2.4"
+#ifndef _YAFFS2UTILS_CONFIGS_H
+#define _YAFFS2UTILS_CONFIGS_H
 
 #define DEFAULT_CHUNKSIZE	2048
-#define DEFAULT_MAX_OBJID	0x3ffff
 
-#if defined(YAFFS_UNUSED_OBJECT_ID)
-#define YAFFS_MAX_OBJID		YAFFS_UNUSED_OBJECT_ID
-#elif defined(YAFFS_MAX_OBJECT_ID)
-#define YAFFS_MAX_OBJID		YAFFS_MAX_OBJECT_ID
-#else
-#define YAFFS_MAX_OBJID		DEFAULT_MAX_OBJID
+#if defined(__linux__) || defined (__FreeBSD__) || defined(__NetBSD__) || \
+    (defined(__APPLE__) && defined(__MACH__))
+ #define _HAVE_LUTIMES		1
+#endif
+
+#if defined(__APPLE__) && defined(__MACH__)
+ #define _HAVE_OSX_SYSLIMITS	1
 #endif
 
 #endif

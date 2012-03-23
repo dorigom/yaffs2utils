@@ -16,29 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2UTILS_ECC_H_
-#define _YAFFS2UTILS_ECC_H_
+#ifndef _YAFFS2UTILS_H
+#define _YAFFS2UTILS_H
 
-#include <mtd/mtd-user.h>
-
-static nand_ecclayout_t nand_oob_16 = {
-        .eccbytes = 6,
-        .eccpos = {0, 1, 2, 3, 6, 7},
-        .oobfree = {{.offset = 8, .length = 8}},
-};
-
-static nand_ecclayout_t nand_oob_64 = {
-        .eccbytes = 24,
-        .eccpos = {40, 41, 42, 43, 44, 45, 46, 47,
-                   48, 49, 50, 51, 52, 53, 54, 55,
-                   56, 57, 58, 59, 60, 61, 62, 63},
-#ifndef _HAVE_ANDROID
-        .oobfree = {{.offset = 2, .length = 38}},
-#else
-        .oobfree = {{.offset = 0, .length = 38}},
-#endif
-};
-
-static nand_ecclayout_t nand_oob_user = {0};
+#define YAFFS2UTILS_VERSION	"0.2.5"
 
 #endif
