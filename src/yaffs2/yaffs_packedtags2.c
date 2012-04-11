@@ -40,18 +40,6 @@
 #define EXTRA_OBJECT_TYPE_SHIFT (28)
 #define EXTRA_OBJECT_TYPE_MASK  ((0x0f) << EXTRA_OBJECT_TYPE_SHIFT)
 
-static int yaffs_check_tags_extra_packable(const struct yaffs_ext_tags *t)
-{
-	if(t->chunk_id != 0 || !t->extra_available)
-		return 0;
-
-	/* Check if the file size is too long to store */
-	if (t->extra_obj_type == YAFFS_OBJECT_TYPE_FILE &&
-	    (t->extra_file_size>> 31) != 0)
-		return 0;
-	return 1;
-}
-
 static void yaffs_dump_packed_tags2_tags_only(
 				const struct yaffs_packed_tags2_tags_only *ptt)
 {
@@ -73,6 +61,18 @@ static void yaffs_dump_tags2(const struct yaffs_ext_tags *t)
 		t->chunk_id, t->n_bytes, t->is_deleted, t->serial_number,
 		t->seq_number);
 
+}
+
+static int yaffs_check_tags_extra_packable(const struct yaffs_ext_tags *t)
+{
+	if(t->chunk_id != 0 || !t->extra_available)
+		return 0;
+
+	/* Check if the file size is too long to store */
+	if (t->extra_obj_type == YAFFS_OBJECT_TYPE_FILE &&
+	    (t->extra_file_size>> 31) != 0)
+		return 0;
+	return 1;
 }
 
 void yaffs_pack_tags2_tags_only(struct yaffs_packed_tags2_tags_only *ptt,

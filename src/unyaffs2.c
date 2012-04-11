@@ -419,10 +419,7 @@ unyaffs2_mkdir (const char *name, const mode_t mode)
 	int retval = 0;
 	const char *dname;
 
-	mode_t pmask;
 	struct stat statbuf;
-
-	pmask = umask(000);
 
 	dname = strlen(name) ? name : ".";
 	if (mkdir(dname, mode) < 0)
@@ -430,8 +427,6 @@ unyaffs2_mkdir (const char *name, const mode_t mode)
 		    !S_ISDIR(statbuf.st_mode) ||
 		    chmod(dname, mode) < 0)
 			retval = -1;
-
-	umask(pmask);
 
 	return retval;
 }
@@ -599,8 +594,9 @@ unyaffs2_obj_chattr (const char *fpath, struct unyaffs2_obj *obj)
 	/* owner */
 	lchown(fpath, obj->uid, obj->gid);
 
-	/* mode */
-	chmod(fpath, obj->mode);
+	/* mode - no effect on symbolic link */
+	if (obj->type != YAFFS_OBJECT_TYPE_SYMLINK)
+		chmod(fpath, obj->mode);
 }
 
 static int
@@ -790,6 +786,8 @@ unyaffs2_create_fakeroot (const char *path)
 	obj->mtime = s.st_mtime;
 	obj->ctime = s.st_ctime;
 
+	unyaffs2_image_objs++;
+
 	return obj;
 }
 
@@ -918,6 +916,7 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 	munmap(outaddr, fsize);
 out:
 	close(outfd);
+
 	return !(remains == 0);
 }
 #else
@@ -1157,17 +1156,8 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 		return -1;
 	}
 
-	/* update obj field for hardlink and chattr used */
 	strncpy(obj->name, oh.name, NAME_MAX);
 	obj->type = oh.type;
-	if (obj->type != YAFFS_OBJECT_TYPE_HARDLINK) {
-		obj->mode = oh.yst_mode;
-		obj->uid = oh.yst_uid;
-		obj->gid = oh.yst_gid;
-		obj->atime = oh.yst_atime;
-		obj->mtime = oh.yst_mtime;
-		obj->ctime = oh.yst_ctime;
-	}
 
 	/* format the file path */
 	if (unyaffs2_curfile[0] != '\0' &&
@@ -1193,6 +1183,27 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 
 		if (!dstfile)
 			goto next;
+	}
+
+	/* update obj field for hardlink and chattr used */
+	if (obj->type == YAFFS_OBJECT_TYPE_HARDLINK) {
+		/* 
+		 * all hardlink are listed into the unyaffs2_hardlink_list,
+		 * and they will be travel and extracted in the another process.
+		 */
+		UNYAFFS2_VERBOSE("hardlink: '%s'\n", dstfile);
+		obj->variant.hardlink.equiv_obj =
+			unyaffs2_objtable_lookup(oh.equiv_id);
+		list_add_tail(&obj->hardlink, &unyaffs2_hardlink_list);
+		goto next;
+	}
+	else {
+		obj->mode = oh.yst_mode;
+		obj->uid = oh.yst_uid;
+		obj->gid = oh.yst_gid;
+		obj->atime = oh.yst_atime;
+		obj->mtime = oh.yst_mtime;
+		obj->ctime = oh.yst_ctime;
 	}
 
 	switch (obj->type) {
@@ -1224,16 +1235,6 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 			retval = symlink(obj->variant.symlink.alias, dstfile);
 		}
 		break;
-	case YAFFS_OBJECT_TYPE_HARDLINK:
-		/* 
-		 * all hardlink are listed into the unyaffs2_hardlink_list,
-		 * and they will be travel and extracted in the another process.
-		 */
-		UNYAFFS2_VERBOSE("hardlink: '%s'\n", dstfile);
-		obj->variant.hardlink.equiv_obj =
-			unyaffs2_objtable_lookup(oh.equiv_id);
-		list_add_tail(&obj->hardlink, &unyaffs2_hardlink_list);
-		break;
 	case YAFFS_OBJECT_TYPE_SPECIAL:
 		if ((obj->mode & S_IFMT) &
 		    (S_IFBLK | S_IFCHR | S_IFIFO | S_IFSOCK)) {
@@ -1262,8 +1263,7 @@ next:
 			UNYAFFS2_PROGRESS_BAR(++unyaffs2_image_objs,
 					      unyaffs2_objtree.objs);
 		}
-		else if (obj->obj_id != YAFFS_OBJECTID_ROOT &&
-			 obj->type != YAFFS_OBJECT_TYPE_HARDLINK) {
+		else if (obj->type != YAFFS_OBJECT_TYPE_HARDLINK) {
 			obj->extracted = 1;
 			UNYAFFS2_PROGRESS_BAR(++unyaffs2_image_objs,
 					      unyaffs2_objtree.objs);
@@ -1323,7 +1323,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	struct unyaffs2_obj *root;
 
 	/* verify whether the input image is valid */
-	if (stat(imgfile, &statbuf) < 0 && !S_ISREG(statbuf.st_mode)) {
+	if (stat(imgfile, &statbuf) < 0 || !S_ISREG(statbuf.st_mode)) {
 		UNYAFFS2_ERROR("image is not a regular file: '%s'\n", imgfile);
 		return -1;
 	}
@@ -1362,6 +1362,8 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 				unyaffs2_chunksize + unyaffs2_sparesize);
 		goto free_and_out;
 	}
+
+	umask(0);
 
 	if (unyaffs2_mkdir(dirpath, 0755) < 0 || chdir(dirpath) < 0 ||
 	    (root = unyaffs2_create_fakeroot(".")) == NULL) {

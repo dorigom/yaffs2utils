@@ -19,6 +19,6 @@
 #ifndef _YAFFS2UTILS_H
 #define _YAFFS2UTILS_H
 
-#define YAFFS2UTILS_VERSION	"0.2.5"
+#define YAFFS2UTILS_VERSION	"0.2.6"
 
 #endif

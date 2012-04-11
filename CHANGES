@@ -1,3 +1,16 @@
+2012-04-11	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.6
+-------------
+
+	* unyaffs2:
+	- Fix #30: unyaffs2: the chmod() should NOT apply on a symbol link.
+	- Fix error displayed when image is NOT a regular file.
+
+	* others:
+	- Merge the latest YAFFS2 to 20120326 from the official repository.
+
+
 2012-03-22	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.5
