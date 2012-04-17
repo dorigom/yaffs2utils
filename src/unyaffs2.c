@@ -1459,8 +1459,8 @@ static int
 unyaffs2_helper (void)
 {
 	UNYAFFS2_HELP("Usage: ");
-	UNYAFFS2_HELP("unyaffs2 [-h] [-e] [-v] [-p size] [-o file] [-f file] "
-		      "imgfile dirname\n");
+	UNYAFFS2_HELP("unyaffs2 [-h] [-e] [-v] [-p pagesize] [-s sparesize] "
+		      "[-o file] [-f file] imgfile dirname\n");
 	UNYAFFS2_HELP("unyaffs2: A utility to extract the yaffs2 image\n");
 	UNYAFFS2_HELP("version: %s\n", YAFFS2UTILS_VERSION);
 	UNYAFFS2_HELP("options:\n");
@@ -1468,7 +1468,10 @@ unyaffs2_helper (void)
 	UNYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
 	UNYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
 	UNYAFFS2_HELP("	-p size	page size of target device "
-		      "(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
+		      "(512|2048|4096|(8192) bytes, default: %u).\n",
+		      DEFAULT_CHUNKSIZE);
+	UNYAFFS2_HELP("	-s size	spare size of target device, "
+		      "default: pagesize/32 bytes");
 	UNYAFFS2_HELP("	-o file	load external oob image file.\n");;
 	UNYAFFS2_HELP("	-f file	extract the specified file.\n");;
 
@@ -1484,9 +1487,10 @@ main (int argc, char* argv[])
 	char *imgfile = NULL, *dirpath = NULL, *oobfile = NULL;
 
 	int option, option_index;
-	static const char *short_options = "hvep:o:f:";
+	static const char *short_options = "hvep:s:o:f:";
 	static const struct option long_options[] = {
 		{"pagesize",	required_argument, 	0, 'p'},
+		{"sparesize",	required_argument,	0, 's'},
 		{"oobimg",	required_argument, 	0, 'o'},
 		{"file",	required_argument, 	0, 'f'},
 		{"endian",	no_argument, 		0, 'e'},
@@ -1511,6 +1515,9 @@ main (int argc, char* argv[])
 		switch (option) {
 		case 'p':
 			unyaffs2_chunksize = strtol(optarg, NULL, 10);
+			break;
+		case 's':
+			unyaffs2_sparesize = strtol(optarg, NULL, 10);
 			break;
 		case 'o':
 			oobfile = optarg;
@@ -1554,6 +1561,12 @@ main (int argc, char* argv[])
 		if (oobfile == NULL)
 			unyaffs2_oobinfo = &nand_oob_64;
 		break;
+	case 4096:
+	case 8192:
+		/* FIXME: The OOB layout for a NAND flash with 8192bytes page */
+		if (oobfile == NULL)
+			unyaffs2_oobinfo = &nand_oob_128;
+		break;
 	default:
 		UNYAFFS2_ERROR("%u bytes page size is not supported\n",
 				unyaffs2_chunksize);
@@ -1561,7 +1574,14 @@ main (int argc, char* argv[])
 	}
 
 	/* spare size */
-	unyaffs2_sparesize = unyaffs2_chunksize / 32;
+	if (!unyaffs2_sparesize)
+		unyaffs2_sparesize = unyaffs2_chunksize / 32;
+
+	if (unyaffs2_sparesize > unyaffs2_chunksize) {
+		UNYAFFS2_ERROR("spare size is too large (%u)\n",
+				unyaffs2_sparesize);
+		return -1;
+	}
 
 	if (oobfile) {
 		if (unyaffs2_load_spare(oobfile) < 0) {

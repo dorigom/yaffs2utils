@@ -1,3 +1,20 @@
+2012-04-16	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.7
+-------------
+
+	* mkyaffs2:
+	- Add a new option '-s' to specify the spare size.
+	- Add page size support of 4096, (8192) bytes.
+
+	* unyaffs2:
+	- Add a new option '-s' to specify the spare size.
+	- Add page size support of 4096, (8192) bytes.
+
+	* others:
+	- Fix #31: Doesn't compile properly on Mac OSX.
+
+
 2012-04-11	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.6

@@ -18,6 +18,8 @@
 
 #include <sys/types.h>
 
+#include "configs.h"
+
 /* Definition of types */
 typedef unsigned char u8;
 typedef unsigned short u16;
@@ -26,5 +28,9 @@ typedef unsigned u32;
 #define YCHAR	char
 
 #define yaffs_trace(...) do {} while (0)
+
+#ifdef _HAVE_BROKEN_LOFF_T
+ typedef long long	loff_t;
+#endif
 
 #endif

@@ -16,9 +16,25 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2UTILS_H
-#define _YAFFS2UTILS_H
+#ifndef _YAFFS2UTILS_MTD_H_
+#define _YAFFS2UTILS_MTD_H_
 
-#define YAFFS2UTILS_VERSION	"0.2.7"
+#define MTD_MAX_OOBFREE_ENTRIES	8
+
+struct nand_oobfree {
+	unsigned offset;
+	unsigned length;
+};
+
+struct nand_ecclayout_user {
+	unsigned eccbytes;
+	unsigned eccpos[64];
+	unsigned oobavail;
+	struct nand_oobfree oobfree[MTD_MAX_OOBFREE_ENTRIES];
+};
+
+#define ECCGETLAYOUT		_IOR('M', 17, struct nand_ecclayout_user)
+
+typedef struct nand_ecclayout_user nand_ecclayout_t;
 
 #endif

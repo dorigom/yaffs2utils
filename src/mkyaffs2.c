@@ -900,8 +900,8 @@ static int
 mkyaffs2_helper (void)
 {
 	MKYAFFS2_HELP("Usage: ");
-	MKYAFFS2_HELP("mkyaffs2 [-h] [-e] [-v] [-p size] [-o file] "
-		      "dirname imgfile\n");
+	MKYAFFS2_HELP("mkyaffs2 [-h] [-e] [-v] [-p pagesize] [-s sparesize] "
+		      "[-o file] dirname imgfile\n");
 	MKYAFFS2_HELP("mkyaffs2: A utility to make the yaffs2 image\n");
 	MKYAFFS2_HELP("version: %s\n", YAFFS2UTILS_VERSION);
 	MKYAFFS2_HELP("options:\n");
@@ -909,7 +909,10 @@ mkyaffs2_helper (void)
 	MKYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
 	MKYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
 	MKYAFFS2_HELP("	-p size	page size of target device "
-		      "(512|2048 bytes, default: %u).\n", DEFAULT_CHUNKSIZE);
+		      "(512|2048|4096|(8192) bytes, default: %u).\n",
+		      DEFAULT_CHUNKSIZE);
+	MKYAFFS2_HELP(" -s size spare size of target device, "
+		      "default: pagesize/32 bytes");
 	MKYAFFS2_HELP("	-o file	load external oob image file.\n");
 
 	return -1;
@@ -925,9 +928,10 @@ main (int argc, char *argv[])
 	struct stat statbuf;
 	
 	int option, option_index;
-	static const char *short_options = "hvep:o:";
+	static const char *short_options = "hvep:s:o:";
 	static const struct option long_options[] = {
 		{"pagesize", 	required_argument, 	0, 'p'},
+		{"sparesize", 	required_argument, 	0, 's'},
 		{"oobimg",	required_argument,	0, 'o'},
 		{"endian", 	no_argument, 		0, 'e'},
 		{"verbose", 	no_argument, 		0, 'v'},
@@ -951,6 +955,9 @@ main (int argc, char *argv[])
 		case 'p':
 			mkyaffs2_chunksize = strtoul(optarg, NULL, 10);
 			break;
+		case 's':
+			mkyaffs2_sparesize = strtoul(optarg, NULL, 10);
+			break;
 		case 'o':
 			oobfile = optarg;
 			break;
@@ -973,6 +980,7 @@ main (int argc, char *argv[])
 	imgfile = argv[optind + 1];
 
 	/* veridate the page size */
+	mkyaffs2_writechunk = &mkyaffs2_yaffs2_writechunk;
 	switch (mkyaffs2_chunksize) {
 	case 512:
 		mkyaffs2_writechunk = &mkyaffs2_yaffs1_writechunk;
@@ -981,9 +989,14 @@ main (int argc, char *argv[])
 		mkyaffs2_flags |= MKYAFFS2_FLAGS_YAFFS1;
 		break;
 	case 2048:
-		mkyaffs2_writechunk = &mkyaffs2_yaffs2_writechunk;
 		if (oobfile == NULL)
 			mkyaffs2_oobinfo = &nand_oob_64;
+		break;
+	case 4096:
+	case 8192:
+		/* FIXME: The OOB layout for a NAND flash with 8192bytes page */
+		if (oobfile == NULL)
+			mkyaffs2_oobinfo = &nand_oob_128;
 		break;
 	default:
 		MKYAFFS2_ERROR("%u bytes page size is NOT supported\n",
@@ -992,7 +1005,14 @@ main (int argc, char *argv[])
 	}
 
 	/* spare size */
-	mkyaffs2_sparesize = mkyaffs2_chunksize / 32;
+	if (!mkyaffs2_sparesize)
+		mkyaffs2_sparesize = mkyaffs2_chunksize / 32;
+
+	if (mkyaffs2_sparesize > mkyaffs2_chunksize) {
+		MKYAFFS2_ERROR("spare size is too large (%u)\n",
+				mkyaffs2_sparesize);
+		return -1;
+	}
 
 	/* verify spare image if it is existed */
 	if (oobfile) {
