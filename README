@@ -37,11 +37,11 @@ Usage
 -----
 * mkyaffs2
 
-	./mkyaffs2 [-h] [-e] [-p pagesize] [-o oobimg] dirname imgfile
+	./mkyaffs2 [-h] [-e] [-p pagesize] [-s sparesize] [-o oobimg] dirname imgfile
 
 * unyaffs2
 
-	./unyaffs2 [-h] [-e] [-p pagesize] [-o oobimg] [-f file] imgfile dirname
+	./unyaffs2 [-h] [-e] [-p pagesize] [-s sparesize] [-o oobimg] [-f file] imgfile dirname
 
 * unspare2
 
