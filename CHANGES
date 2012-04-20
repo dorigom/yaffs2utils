@@ -1,3 +1,26 @@
+2012-04-20	Luen-Yung Lin <penguin.lin@gmail.com>
+
+Version 0.2.8
+-------------
+
+	* mkyaffs2:
+	- Fix typos issue.
+	- Add page size supports up to (16384) bytes.
+	  - Since the latest Linux kernel (3.3) does not provide the default
+	    oob scheme for page size > 4096 bytes, I wrote the "(8192), (16384)"
+	    supports, instead of "8192, 16384", in the help message.
+
+	* unyaffs2:
+	- Fix typos issue.
+	- Add page size supports up to (16384) bytes.
+	  - Since the latest Linux kernel (3.3) does not provide the default
+	    oob scheme for page size > 4096 bytes, I wrote the "(8192), (16384)"
+	    supports, instead of "8192, 16384", in the help message.
+
+	* others:
+	- Update README for supportos of page and spare size.
+
+
 2012-04-19	Luen-Yung Lin <penguin.lin@gmail.com>
 
 Version 0.2.7

@@ -174,7 +174,7 @@ static unsigned unyaffs2_flags = 0;
 static unsigned unyaffs2_image_objs = 0;
 
 static unsigned unyaffs2_bufsize = 0;
-static unsigned char *unyaffs2_datbuf = NULL;
+static unsigned char *unyaffs2_databuf = NULL;
 
 static int unyaffs2_image_fd = -1;
 
@@ -417,16 +417,23 @@ static int
 unyaffs2_mkdir (const char *name, const mode_t mode)
 {
 	int retval = 0;
+	char *p = NULL;
 	const char *dname;
 
 	struct stat statbuf;
 
 	dname = strlen(name) ? name : ".";
-	if (mkdir(dname, mode) < 0)
-		if (stat(dname, &statbuf) < 0 ||
-		    !S_ISDIR(statbuf.st_mode) ||
-		    chmod(dname, mode) < 0)
-			retval = -1;
+
+	p = (char *)dname;
+	while ((p = strchr(p, '/')) != NULL) {
+		*p = '\0';
+		retval = mkdir(dname, 0755);
+		*p++ = '/';
+	}
+
+	if (mkdir(dname, mode) < 0 && 
+	    (stat(dname, &statbuf) < 0 || !S_ISDIR(statbuf.st_mode)))
+		retval = -1;
 
 	return retval;
 }
@@ -692,19 +699,19 @@ unyaffs2_scan_img (void)
 #ifdef _HAVE_MMAP
 	remains = unyaffs2_mmapinfo.size;
 	while (offset < unyaffs2_mmapinfo.size && remains >= unyaffs2_bufsize &&
-	       memcpy(unyaffs2_datbuf,
+	       memcpy(unyaffs2_databuf,
 		      unyaffs2_mmapinfo.addr + offset, unyaffs2_bufsize)) {
 #else
 	offset = lseek(unyaffs2_image_fd, 0, SEEK_SET);
 	while ((reads = safe_read(unyaffs2_image_fd,
-				  unyaffs2_datbuf, unyaffs2_bufsize)) != 0) {
+				  unyaffs2_databuf, unyaffs2_bufsize)) != 0) {
 #endif
 		struct yaffs_ext_tags tag;
 		struct unyaffs2_obj *obj;
 		struct yaffs_obj_hdr *oh;
 
 #ifdef _HAVE_MMAP
-		if (memcmp(unyaffs2_datbuf, 
+		if (memcmp(unyaffs2_databuf, 
 		    unyaffs2_mmapinfo.addr + offset, unyaffs2_bufsize)) {
 #else
 		if (reads != unyaffs2_bufsize) {
@@ -716,10 +723,10 @@ unyaffs2_scan_img (void)
 		}
 
 		unyaffs2_extract_packedtags(&tag,
-					    unyaffs2_datbuf +
+					    unyaffs2_databuf +
 					    unyaffs2_chunksize);
 
-		if (unyaffs2_isempty(unyaffs2_datbuf, unyaffs2_bufsize) ||
+		if (unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize) ||
 		    !tag.obj_id || !tag.chunk_used) {
 			UNYAFFS2_DEBUG("empty page skipped\n");
 			goto next;
@@ -735,7 +742,7 @@ unyaffs2_scan_img (void)
 				return -1;
 			}
 
-			oh = (struct yaffs_obj_hdr *)unyaffs2_datbuf;
+			oh = (struct yaffs_obj_hdr *)unyaffs2_databuf;
 			if (UNYAFFS2_ISENDIAN)
 				oh_endian_transform(oh);
 
@@ -943,7 +950,7 @@ unyaffs2_extract_file (const int fd, off_t off,
 
 	/* read image until the size is reached */
 	while (written < size &&
-	       (r = safe_read(fd, unyaffs2_datbuf, unyaffs2_bufsize)) != 0)
+	       (r = safe_read(fd, unyaffs2_databuf, unyaffs2_bufsize)) != 0)
 	{
 		if (r != unyaffs2_bufsize) {
 			UNYAFFS2_DEBUG("error while reading image for '%s'\n",
@@ -952,10 +959,10 @@ unyaffs2_extract_file (const int fd, off_t off,
 		}
 
 		unyaffs2_extract_packedtags(&tag,
-					    unyaffs2_datbuf +
+					    unyaffs2_databuf +
 					    unyaffs2_chunksize);
 
-		w = safe_write(outfd, unyaffs2_datbuf, tag.n_bytes);
+		w = safe_write(outfd, unyaffs2_databuf, tag.n_bytes);
 		if (w != tag.n_bytes) {
 			UNYAFFS2_DEBUG("error while writing file '%s'", fpath);
 			break;
@@ -1119,15 +1126,16 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 	 * extract the object content
 	 */
 #ifdef _HAVE_MMAP
-	memcpy(unyaffs2_datbuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
+	memcpy(unyaffs2_databuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
 	       unyaffs2_bufsize);
 #else
 	lseek(unyaffs2_image_fd, obj->hdr_off, SEEK_SET);
-	reads = safe_read(unyaffs2_image_fd, unyaffs2_datbuf, unyaffs2_bufsize);
+	reads = safe_read(unyaffs2_image_fd,
+			  unyaffs2_databuf, unyaffs2_bufsize);
 #endif
 
 #ifdef _HAVE_MMAP
-	if (memcmp(unyaffs2_datbuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
+	if (memcmp(unyaffs2_databuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
 	    unyaffs2_bufsize)) {
 #else
 	if (reads != unyaffs2_bufsize) {
@@ -1138,15 +1146,15 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 		return -1;
 	}
 
-	memcpy(&oh, unyaffs2_datbuf, sizeof(struct yaffs_obj_hdr));
+	memcpy(&oh, unyaffs2_databuf, sizeof(struct yaffs_obj_hdr));
 	if (UNYAFFS2_ISENDIAN)
 		oh_endian_transform(&oh);
 
 	unyaffs2_extract_packedtags(&tag,
-				    unyaffs2_datbuf +
+				    unyaffs2_databuf +
 				    unyaffs2_chunksize);
 
-	if (unyaffs2_isempty(unyaffs2_datbuf, unyaffs2_bufsize) ||
+	if (unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize) ||
 	    !tag.chunk_used || tag.chunk_id != 0 || tag.obj_id != obj->obj_id ||
 	    oh.parent_obj_id != obj->parent_id) {
 		/* parse image failed */
@@ -1355,8 +1363,8 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 #endif
 
 	unyaffs2_bufsize = unyaffs2_chunksize + unyaffs2_sparesize;
-	unyaffs2_datbuf = (unsigned char *)malloc(unyaffs2_bufsize);
-	if (unyaffs2_datbuf == NULL) {
+	unyaffs2_databuf = (unsigned char *)malloc(unyaffs2_bufsize);
+	if (unyaffs2_databuf == NULL) {
 		UNYAFFS2_ERROR("cannot allocate working buffer ");
 		UNYAFFS2_ERROR("(default: %u bytes)\n",
 				unyaffs2_chunksize + unyaffs2_sparesize);
@@ -1447,8 +1455,8 @@ exit_and_out:
 free_and_out:
 	if (unyaffs2_image_fd >= 0)
 		close(unyaffs2_image_fd);
-	if (unyaffs2_datbuf)
-		free(unyaffs2_datbuf);
+	if (unyaffs2_databuf)
+		free(unyaffs2_databuf);
 
 	return retval;
 }
@@ -1467,11 +1475,11 @@ unyaffs2_helper (void)
 	UNYAFFS2_HELP("	-h	display this help message and exit.\n");
 	UNYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
 	UNYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
-	UNYAFFS2_HELP("	-p size	page size of target device "
-		      "(512|2048|4096|(8192) bytes, default: %u).\n",
+	UNYAFFS2_HELP("	-p size	page size of target device.\n"
+		      "		(512|2048|4096|(8192)|(16384) bytes, default: %u).\n",
 		      DEFAULT_CHUNKSIZE);
-	UNYAFFS2_HELP("	-s size	spare size of target device, "
-		      "default: pagesize/32 bytes");
+	UNYAFFS2_HELP("	-s size	spare size of target device.\n"
+		      "		(default: pagesize/32 bytes; max: pagesize)\n");
 	UNYAFFS2_HELP("	-o file	load external oob image file.\n");;
 	UNYAFFS2_HELP("	-f file	extract the specified file.\n");;
 
@@ -1563,7 +1571,8 @@ main (int argc, char* argv[])
 		break;
 	case 4096:
 	case 8192:
-		/* FIXME: The OOB layout for a NAND flash with 8192bytes page */
+	case 16384:
+		/* FIXME: The OOB scheme for 8192 and 16384. */
 		if (oobfile == NULL)
 			unyaffs2_oobinfo = &nand_oob_128;
 		break;

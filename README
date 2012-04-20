@@ -52,12 +52,14 @@ to recode data into the flash (with oob option), such as:
 
 	nandwrite -a -o /dev/mtd${MTDNUM} ${YAFFS2IMAGE}
 
-If the oob layout is differed from the Linux default, the tool "unspare2" can
-be used to extract the oob layout from the NAND device. If the endian is 
-different from your building system, the option "-e" is required while executing
-the "unspare2" on the targets. Finally, by the option '-o' to specify the oob
-image while using the "mkyaffs2/unyaffs2" can create/extract the YAFFS image
-with the various oob layout for the different NAND devices.
+The option '-p' and '-s' can specify the page and spare size of the images, and
+the information of the page and spare size should be available from your NAND
+flash datasheet. If the oob layout is differed from the Linux default, the tool
+"unspare2" can be used to extract the oob layout from the NAND device. If the
+endian is different from your building system, The option "-e" is required while
+executing the "unspare2" on the targets. Finally, by the option '-o' to specify
+the oob image while using the "mkyaffs2/unyaffs2" can create/extract the YAFFS
+image with the various oob layout for the different NAND devices.
 
 
 Android

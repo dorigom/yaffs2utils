@@ -130,7 +130,7 @@ static nand_ecclayout_t *mkyaffs2_oobinfo = NULL;
 static int (*mkyaffs2_writechunk)(unsigned, unsigned, unsigned) = NULL;
 
 static unsigned mkyaffs2_bufsize = 0;
-static unsigned char *mkyaffs2_datbuf = NULL;
+static unsigned char *mkyaffs2_databuf = NULL;
 
 static struct mkyaffs2_fstree mkyaffs2_objtree = {0};
 static struct list_head mkyaffs2_objtable[MKYAFFS2_OBJTABLE_SIZE];
@@ -340,7 +340,7 @@ mkyaffs2_yaffs1_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 	ssize_t written;
 	struct yaffs_ext_tags tag;
 	struct yaffs_packed_tags1 pt;
-	unsigned char *spare = mkyaffs2_datbuf + mkyaffs2_chunksize;
+	unsigned char *spare = mkyaffs2_databuf + mkyaffs2_chunksize;
 
 	/* prepare the spare (oob) first */
 	memset(&tag, 0, sizeof(struct yaffs_ext_tags));
@@ -371,7 +371,7 @@ mkyaffs2_yaffs1_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 
 	/* write a whole "chunk + spare" back to the image */
 	written = safe_write(mkyaffs2_image_fd, 
-			     mkyaffs2_datbuf, mkyaffs2_bufsize);
+			     mkyaffs2_databuf, mkyaffs2_bufsize);
 	if (written != mkyaffs2_bufsize)
 		return -1;
 
@@ -386,7 +386,7 @@ mkyaffs2_yaffs2_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 	ssize_t written;
 	struct yaffs_ext_tags tag;
 	struct yaffs_packed_tags2 pt;
-	unsigned char *spare = mkyaffs2_datbuf + mkyaffs2_chunksize;
+	unsigned char *spare = mkyaffs2_databuf + mkyaffs2_chunksize;
 
 	/* prepare the spare (oob) first */
 	memset(&tag, 0, sizeof(struct yaffs_ext_tags));
@@ -421,7 +421,7 @@ mkyaffs2_yaffs2_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 
 	/* write a whole "chunk + spare" back to the image */
 	written = safe_write(mkyaffs2_image_fd,
-			     mkyaffs2_datbuf, mkyaffs2_bufsize);
+			     mkyaffs2_databuf, mkyaffs2_bufsize);
 	if (written != mkyaffs2_bufsize)
 		return -1;
 
@@ -478,8 +478,8 @@ mkyaffs2_write_oh (struct mkyaffs2_obj *obj,
  	   	oh_endian_transform(&oh);
 
 	/* copy header into the buffer */
-	memset(mkyaffs2_datbuf, 0xff, mkyaffs2_chunksize);
-	memcpy(mkyaffs2_datbuf, &oh, sizeof(struct yaffs_obj_hdr));
+	memset(mkyaffs2_databuf, 0xff, mkyaffs2_chunksize);
+	memcpy(mkyaffs2_databuf, &oh, sizeof(struct yaffs_obj_hdr));
 
 	/* write buffer */
 	retval = mkyaffs2_writechunk(0xffff, obj->obj_id, 0);
@@ -492,7 +492,7 @@ mkyaffs2_write_regfile (const char *fpath, unsigned obj_id)
 {
 	int fd, retval = 0;
 	unsigned chunk = 0;
-	unsigned char *datbuf = mkyaffs2_datbuf;
+	unsigned char *databuf = mkyaffs2_databuf;
 	ssize_t bytes;
 
 	fd = open(fpath, O_RDONLY);
@@ -501,8 +501,8 @@ mkyaffs2_write_regfile (const char *fpath, unsigned obj_id)
 		return -1;
 	}
 
-	memset(datbuf, 0xff, mkyaffs2_chunksize);
-	while((bytes = safe_read(fd, datbuf, mkyaffs2_chunksize)) != 0) {
+	memset(databuf, 0xff, mkyaffs2_chunksize);
+	while((bytes = safe_read(fd, databuf, mkyaffs2_chunksize)) != 0) {
 		if (bytes < 0) {
 			MKYAFFS2_DEBUG("error while reading file '%s'\n",
 					fpath);
@@ -518,7 +518,7 @@ mkyaffs2_write_regfile (const char *fpath, unsigned obj_id)
 			break;
 		}
 
-		memset(datbuf, 0xff, mkyaffs2_chunksize);
+		memset(databuf, 0xff, mkyaffs2_chunksize);
 	}
 
 	close(fd);
@@ -844,8 +844,8 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 
 	/* allocate working buffer */
 	mkyaffs2_bufsize = mkyaffs2_chunksize + mkyaffs2_sparesize;
-	mkyaffs2_datbuf = (unsigned char *)malloc(mkyaffs2_bufsize);
-	if (mkyaffs2_datbuf == NULL) {
+	mkyaffs2_databuf = (unsigned char *)malloc(mkyaffs2_bufsize);
+	if (mkyaffs2_databuf == NULL) {
 		MKYAFFS2_ERROR("cannot allocate working buffer ");
 		MKYAFFS2_ERROR("(default: %u bytes)\n",
 				mkyaffs2_chunksize + mkyaffs2_sparesize);
@@ -886,7 +886,7 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 free_and_out:
 	if (mkyaffs2_image_fd >= 0)
 		close(mkyaffs2_image_fd);
-	free(mkyaffs2_datbuf);
+	free(mkyaffs2_databuf);
 exit_and_out:
 	mkyaffs2_objtree_exit(&mkyaffs2_objtree);
 	mkyaffs2_objtable_exit();
@@ -908,11 +908,11 @@ mkyaffs2_helper (void)
 	MKYAFFS2_HELP("	-h	display this help message and exit.\n");
 	MKYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
 	MKYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
-	MKYAFFS2_HELP("	-p size	page size of target device "
-		      "(512|2048|4096|(8192) bytes, default: %u).\n",
+	MKYAFFS2_HELP("	-p size	page size of target device.\n"
+		      "		(512|2048|4096|(8192)|(16384) bytes, default: %u).\n",
 		      DEFAULT_CHUNKSIZE);
-	MKYAFFS2_HELP(" -s size spare size of target device, "
-		      "default: pagesize/32 bytes");
+	MKYAFFS2_HELP("	-s size spare size of target device.\n"
+		      "		(default: pagesize/32 bytes; max: pagesize)\n");
 	MKYAFFS2_HELP("	-o file	load external oob image file.\n");
 
 	return -1;
@@ -994,7 +994,8 @@ main (int argc, char *argv[])
 		break;
 	case 4096:
 	case 8192:
-		/* FIXME: The OOB layout for a NAND flash with 8192bytes page */
+	case 16384:
+		/* FIXME: The OOB scheme for 8192 and 16384 bytes */
 		if (oobfile == NULL)
 			mkyaffs2_oobinfo = &nand_oob_128;
 		break;
