@@ -416,7 +416,6 @@ unyaffs2_specfile_exit (void)
 static int
 unyaffs2_mkdir (const char *name, const mode_t mode)
 {
-	int retval = 0;
 	char *p = NULL;
 	const char *dname;
 
@@ -427,15 +426,15 @@ unyaffs2_mkdir (const char *name, const mode_t mode)
 	p = (char *)dname;
 	while ((p = strchr(p, '/')) != NULL) {
 		*p = '\0';
-		retval = mkdir(dname, 0755);
+		mkdir(dname, 0755);
 		*p++ = '/';
 	}
 
 	if (mkdir(dname, mode) < 0 && 
 	    (stat(dname, &statbuf) < 0 || !S_ISDIR(statbuf.st_mode)))
-		retval = -1;
+		return -1;
 
-	return retval;
+	return 0;
 }
 
 static char *
