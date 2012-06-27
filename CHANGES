@@ -7,18 +7,18 @@ Version 0.2.9
 	- Fix override issue in endian transformation.
 	- Fix GCC-4.4 warning "pointer break strict-aliasing rules".
 	- Add new 64/128 bytes oob schemes for the new option 
-	  '--raw-oobfree' of mkyaffs2/unyaffs2.
+	  '--yaffs-ecclayout' of mkyaffs2/unyaffs2.
 	- Change file organization.
 
 	* mkyaffs2:
-	- Add a new option "--raw-oobfree" to create an image compatibility with
-	  the image made by the official mkyaffs2image tool.
+	- Add a new option "--yaffs-ecclayout" to create an image compatibility
+	  with the image made by the official mkyaffs2image tool.
 	- Add a new option "--all-root" to create an image that all files are
 	  owned by root.
 	- Code level optimization.
 
 	* unyaffs2:
-	- Add a new opetion "--raw-oobfree" to extract an image made by the
+	- Add a new opetion "--yaffs-ecclayout" to extract an image made by the
 	  native official mkyaffs2image tool.
 	- Code level optimization.
 

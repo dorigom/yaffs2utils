@@ -42,13 +42,13 @@ Usage
 
 	./mkyaffs2 [-h|--help] [-e|--endian] [-p|--pagesize pagesize]
 	           [-s|--sparesize sparesize] [-o|--oobimg oobimg]
-	           [--all-root] [--raw-oobfree] dirname imgfile
+	           [--all-root] [--yaffs-ecclayout] dirname imgfile
 
 * unyaffs2
 
 	./unyaffs2 [-h|--help] [-e|--endian] [-p|--pagesize pagesize]
 	           [-s|--sparesize sparesize] [-o|--oobimg oobimg]
-	           [-f|--fileset file] [--raw-oobfree] imgfile dirname
+	           [-f|--fileset file] [--yaffs-ecclayout] imgfile dirname
 
 * unspare2
 
@@ -82,9 +82,9 @@ two byte in the oob free area to mark the bad block, but the official tool
 "mkyaffs2image" use all of the free area to record YAFFS2 private data (it has
 its own bad block marker mechanism). If a image is requested to be created
 compatibly with the one made from the official "mkyaffs2image" tool, the option
-"--raw-oobfree" has to be specified. It will create a image that use the full
-free space in the oob area without shifting the first two byte for the bad block
-marker by Linux MTD subsystem default.
+'--yaffs-ecclayout' has to be specified. It will create a image that use the
+full free space in the oob area without shifting the first two byte for the bad
+block marker by Linux MTD subsystem default.
 
 unyaffs2
 --------
@@ -92,9 +92,10 @@ The tool "unyaffs2" can extract the content of the image 'imgfile', which was
 made by the 'mkyaffs2', into the directory "dirname".
 
 As "mkyaffs2", it also provide the option '-p' and '-s' to specify the page and
-spare size, and the option '-e' to provide the endian transformation. When the
-image is created from the official "mkyaffs2image", the option "--raw-oobfree"
-is also required.
+spare size, and the option '-e' to provide the endian convert. When the image is
+created by the tool using the YAFFS original oob scheme (such as the official
+tool "mkyaffs2image", or the "mkyaffs2" with the option '--yaffs-ecclayout'),
+the option '--yaffs-ecclayout' is also required.
 
 When the option '-f' is applied, the "unyaffs2" can extract only the selection
 of files from the YAFFS image, instead of the whole image content.
@@ -108,9 +109,9 @@ unspare2
 When the oob layout is different from the Linux defailt, the "unspare2" has the
 capacity to dump the the oob scheme from the NAND device on the target into a 
 file "imgfile", and the oob image file can be used by mkyaffs2/unyaffs2 with the
-option "-o" to create/extract the suitable image. The endian transformation
-option '-e' is also provided while the endian of targets are different from the
-local building system. 
+option "-o" to create/extract the suitable image. The endian convert option '-e'
+is also provided while the endian of targets are different from the local
+building system. 
 
 
 ANDROID
@@ -119,13 +120,15 @@ ANDROID
 Recently, I found that the most Android images are made from the official YAFFS2
 tool - "mkyaffs2image". As the discussion in the previous section "yaffs2utils",
 an image created by the official YAFFS2 tools (mkyaffs2image) can not be run on
-the native Linux, because its oob layout is different from the default one in
-the Linux MTD subsystem.
+the native Linux (with the MTD subsystem), because its oob layout is different
+from the default one in the Linux MTD subsystem.
 
 As the discussion in the previous "Usage" section, for an image is requested to
 be created/extracted with the compatibilities of the one made by the official
-YFFS2 tool (mkyaffs2image), the option "--raw-oobfree" of "mkyaffs2/unyaffs2"
-has to be specified.
+YFFS2 tool (mkyaffs2image), the option '--yaffs-ecclayout' of "mkyaffs2/unyaffs2"
+has to be specified. With the option '--yaffs-ecclayout', the "mkyaffs2/unyaffs2"
+will create/extract a image by using the YAFFS2 original oob scheme, instead of
+using the Linux MTD oob layout by default.
 
 
 COMPATIBILITY
