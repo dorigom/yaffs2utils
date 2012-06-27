@@ -21,7 +21,7 @@
 #include <math.h>
 #include <sys/ioctl.h>
 
-#include "yaffs2utils_progress.h"
+#include "progress_bar.h"
 
 /*----------------------------------------------------------------------------*/
 

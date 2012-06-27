@@ -31,10 +31,10 @@
 #include <sys/ioctl.h>
 #include <mtd/mtd-user.h>
 
-#include "yaffs2utils_io.h"
-#include "yaffs2utils_endian.h"
+#include "safe_rw.h"
+#include "endian_convert.h"
 
-#include "yaffs2utils_version.h"
+#include "version.h"
 
 /*-------------------------------------------------------------------------*/
 
@@ -58,7 +58,7 @@ static unsigned unspare2_flags = 0;
 /*-------------------------------------------------------------------------*/
 
 static void
-unspare2_endian_transform (nand_ecclayout_t *oob)
+unspare2_endian_convert (nand_ecclayout_t *oob)
 {
 	unsigned i, eccpos_entries, oobfree_entries;
 
@@ -103,7 +103,7 @@ unspare2_dump (const char *devfile, const char *imgfile)
 
 	/* endian transform */
 	if (UNSPARE2_ISENDIAN)
-		unspare2_endian_transform(&oob);
+		unspare2_endian_convert(&oob);
 
 	/* write data back to the file */
 	if ((fd = open(imgfile, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0) {

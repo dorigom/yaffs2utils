@@ -16,10 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2UTILS_PROGESS_H
-#define _YAFFS2UTILS_PROGESS_H
+#ifndef __YAFFS2UTILS_VERSION_H__
+#define __YAFFS2UTILS_VERSION_H__
 
-int progress_init (void);
-void progress_bar (unsigned current, unsigned max);
+#define YAFFS2UTILS_VERSION	"0.2.9"
 
 #endif

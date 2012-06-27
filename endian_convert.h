@@ -16,20 +16,29 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2UTILS_CONFIGS_H
-#define _YAFFS2UTILS_CONFIGS_H
+#ifndef __YAFFS2UTILS_ENDIAN_CONVERT_H__
+#define __YAFFS2UTILS_ENDIAN_CONVERT_H__
 
-#define DEFAULT_CHUNKSIZE	2048
-
-#if defined(__linux__) || defined (__FreeBSD__) || defined(__NetBSD__) || \
-    (defined(__APPLE__) && defined(__MACH__))
- #define _HAVE_LUTIMES		1
-#endif
+#include "yaffs_packedtags1.h"
+#include "yaffs_packedtags2.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
- #define _HAVE_OSX_SYSLIMITS	1
- #define _HAVE_BROKEN_LOFF_T	1
- #define _HAVE_BROKEN_MTD_H	1
+#include <libkern/OSByteOrder.h>
+#else
+#include <asm/byteorder.h>
 #endif
+
+
+#define ENDIAN_SWAP_32(x)       ((((x) & 0x000000ff) << 24) | \
+				(((x) & 0x0000ff00) << 8) | \
+				(((x) & 0x00ff0000) >> 8) | \
+				(((x) & 0xff000000) >> 24))
+#define ENDIAN_SWAP_16(x)       ((((x) & 0x00ff) << 8) | \
+				(((x) & 0xff00) >> 8))
+
+void oh_endian_convert (struct yaffs_obj_hdr *oh);
+void packedtags1_endian_convert (struct yaffs_packed_tags1 *pt, unsigned reverse);
+void packedtags2_tagspart_endian_convert (struct yaffs_packed_tags2 *t);
+void packedtags2_eccother_endian_convert (struct yaffs_packed_tags2 *t);
 
 #endif

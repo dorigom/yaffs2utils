@@ -64,6 +64,9 @@
 #define YAFFS_OBJECTID_UNLINKED		3
 #define YAFFS_OBJECTID_DELETED		4
 
+/* Fake object Id for summary data */
+#define YAFFS_OBJECTID_SUMMARY		0x10
+
 /* Sequence numbers are used in YAFFS2 to determine block allocation order.
  * The range is limited slightly to help distinguish bad numbers from good.
  * This also allows us to perhaps in the future use special numbers for
@@ -73,6 +76,9 @@
  */
 #define YAFFS_LOWEST_SEQUENCE_NUMBER	0x00001000
 #define YAFFS_HIGHEST_SEQUENCE_NUMBER	0xefffff00
+
+/* Special sequence number for bad block that failed to be marked bad */
+#define YAFFS_SEQUENCE_BAD_BLOCK	0xffff0000
 
 /* -------------------------------------------------------------------------- */
 
@@ -88,7 +94,7 @@ struct yaffs_tags {
 union yaffs_tags_union {
 	struct yaffs_tags as_tags;
 	u8 as_bytes[8];
-};
+} __attribute__((__may_alias__));
 
 enum yaffs_ecc_result {
 	YAFFS_ECC_RESULT_UNKNOWN,
@@ -104,6 +110,14 @@ enum yaffs_obj_type {
 	YAFFS_OBJECT_TYPE_DIRECTORY,
 	YAFFS_OBJECT_TYPE_HARDLINK,
 	YAFFS_OBJECT_TYPE_SPECIAL
+};
+
+/* Special types extension used by yaffs2utils internals */
+enum yaffs_obj_type_special {
+	YAFFS_OBJECT_TYPE_CHR = YAFFS_OBJECT_TYPE_SPECIAL,
+	YAFFS_OBJECT_TYPE_BLK,
+	YAFFS_OBJECT_TYPE_FIFO,
+	YAFFS_OBJECT_TYPE_SOCK,
 };
 
 struct yaffs_ext_tags {
@@ -173,7 +187,8 @@ struct yaffs_obj_hdr {
 
 	u32 file_size_high;
 	u32 reserved[1];
-	int shadows_obj;	/* This object header shadows the specified object if > 0 */
+	int shadows_obj;	/* This object header shadows the
+				   specified object if > 0 */
 
 	/* is_shrink applies to object headers written when wemake a hole. */
 	u32 is_shrink;

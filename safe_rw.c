@@ -1,4 +1,4 @@
-/* 
+/*
  * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image.
  * Copyright (C) 2010-2011 Luen-Yung Lin <penguin.lin@gmail.com>
  *
@@ -16,29 +16,51 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _YAFFS2UTILS_ENDIAN_H
-#define _YAFFS2UTILS_ENDIAN_H
+#include <errno.h>
+#include <unistd.h>
 
-#include "yaffs_packedtags1.h"
-#include "yaffs_packedtags2.h"
+#include "safe_rw.h"
 
-#if defined(__APPLE__) && defined(__MACH__)
-#include <libkern/OSByteOrder.h>
-#else
-#include <asm/byteorder.h>
-#endif
+/*-------------------------------------------------------------------------*/
 
+ssize_t
+safe_read (int fd, void *buf, size_t count)
+{
+	ssize_t r;
+	size_t reads = 0;
 
-#define ENDIAN_SWAP_32(x)       ((((x) & 0x000000ff) << 24) | \
-				(((x) & 0x0000ff00) << 8) | \
-				(((x) & 0x00ff0000) >> 8) | \
-				(((x) & 0xff000000) >> 24))
-#define ENDIAN_SWAP_16(x)       ((((x) & 0x00ff) << 8) | \
-				(((x) & 0xff00) >> 8))
+	while (reads < count &&
+	       (r = read(fd, (char *)buf + reads, count - reads)) != 0)
+	{
+		if (r < 0) {
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
 
-void oh_endian_transform (struct yaffs_obj_hdr *oh);
-void packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse);
-void packedtags2_tagspart_endian_transform (struct yaffs_packed_tags2 *t);
-void packedtags2_eccother_endian_transform (struct yaffs_packed_tags2 *t);
+			return -1;
+		}
+		reads += r;
+	}
 
-#endif
+	return reads;
+}
+
+ssize_t
+safe_write (int fd, const void *buf, size_t count)
+{
+	ssize_t w;
+	size_t written = 0;
+
+	while (written < count &&
+	       (w = write(fd, (char *)buf + written, count - written)) != 0)
+	{
+		if (w < 0) {
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
+
+			return -1;
+		}
+		written += w;
+	}
+
+	return written;
+}

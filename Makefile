@@ -25,11 +25,12 @@ CFLAGS		=  -I. -I./yaffs2
 CFLAGS		+= -O2
 CFLAGS		+= -Wall -Wshadow -Winline -Wpointer-arith -Wnested-externs \
 		   -Wwrite-strings -Wstrict-prototypes -Wmissing-declarations \
-		   -Wmissing-prototypes -Wredundant-decls \
+		   -Wmissing-prototypes -Wredundant-decls
 
 CFLAGS		+= -D_HAVE_MMAP
 
-#CFLAGS		+= -D_HAVE_ANDROID
+#CFLAGS		+= -D_MKYAFFS2_DEBUG
+#CFLAGS		+= -D_UNYAFFS2_DEBUG
 
 LDFLAGS		+= -lm
 
@@ -37,7 +38,7 @@ YAFFS2SRCS	= yaffs2/yaffs_hweight.c yaffs2/yaffs_ecc.c \
 		  yaffs2/yaffs_packedtags1.c yaffs2/yaffs_packedtags2.c
 YAFFS2OBJS	= $(YAFFS2SRCS:.c=.o)
 
-LIBSRCS		= yaffs2utils_io.c yaffs2utils_endian.c yaffs2utils_progress.c
+LIBSRCS		= safe_rw.c endian_convert.c progress_bar.c
 LIBOBJS		= $(LIBSRCS:.c=.o)
 
 MKYAFFS2SRCS	= mkyaffs2.c

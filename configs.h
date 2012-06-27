@@ -1,4 +1,4 @@
-/*
+/* 
  * yaffs2utils: Utilities to make/extract a YAFFS2/YAFFS1 image.
  * Copyright (C) 2010-2011 Luen-Yung Lin <penguin.lin@gmail.com>
  *
@@ -16,51 +16,20 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <errno.h>
-#include <unistd.h>
+#ifndef __YAFFS2UTILS_CONFIGS_H__
+#define __YAFFS2UTILS_CONFIGS_H__
 
-#include "yaffs2utils_io.h"
+#define DEFAULT_CHUNKSIZE	2048
 
-/*-------------------------------------------------------------------------*/
+#if defined(__linux__) || defined (__FreeBSD__) || defined(__NetBSD__) || \
+    (defined(__APPLE__) && defined(__MACH__))
+ #define _HAVE_LUTIMES		1
+#endif
 
-ssize_t
-safe_read (int fd, void *buf, size_t count)
-{
-	ssize_t r;
-	size_t reads = 0;
+#if defined(__APPLE__) && defined(__MACH__)
+ #define _HAVE_OSX_SYSLIMITS	1
+ #define _HAVE_BROKEN_LOFF_T	1
+ #define _HAVE_BROKEN_MTD_H	1
+#endif
 
-	while (reads < count &&
-	       (r = read(fd, (char *)buf + reads, count - reads)) != 0)
-	{
-		if (r < 0) {
-			if (errno == EINTR)
-				continue;
-
-			return -1;
-		}
-		reads += r;
-	}
-
-	return reads;
-}
-
-ssize_t
-safe_write (int fd, const void *buf, size_t count)
-{
-	ssize_t w;
-	size_t written = 0;
-
-	while (written < count &&
-	       (w = write(fd, (char *)buf + written, count - written)) != 0)
-	{
-		if (w < 0) {
-			if (errno == EINTR)
-				continue;
-
-			return -1;
-		}
-		written += w;
-	}
-
-	return written;
-}
+#endif

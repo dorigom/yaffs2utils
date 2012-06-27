@@ -25,11 +25,12 @@
 #include <unistd.h>
 #include <string.h>
 #include <getopt.h>
-#include <limits.h>
 #include <libgen.h>
+#include <limits.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/param.h>
+#include <sys/types.h>
 #ifdef _HAVE_LUTIMES
 #include <sys/time.h>
 #else
@@ -43,18 +44,83 @@
 #include "yaffs_packedtags2.h"
 #include "yaffs_trace.h"
 
-#include "yaffs2utils_io.h"
-#include "yaffs2utils_ecc.h"
-#include "yaffs2utils_list.h"
-#include "yaffs2utils_endian.h"
-#include "yaffs2utils_progress.h"
+#include "list.h"
+#include "safe_rw.h"
+#include "progress_bar.h"
+#include "endian_convert.h"
+#include "nand_ecclayout.h"
 
-#include "yaffs2utils_version.h"
+#include "version.h"
+
+/*-------------------------------------------------------------------------*/
+
+#define UNYAFFS2_OBJTABLE_SIZE	4096
+#define UNYAFFS2_HARDLINK_MAX	127
+
+#define UNYAFFS2_FLAGS_NONROOT	(1 << 0)
+#define UNYAFFS2_FLAGS_SHOWBAR	(1 << 1)
+#define UNYAFFS2_FLAGS_YAFFS1	(1 << 16)
+#define UNYAFFS2_FLAGS_ENDIAN	(1 << 17)
+#define UNYAFFS2_FLAGS_RAWOOB	(1 << 18)
+#define UNYAFFS2_FLAGS_VERBOSE	(1 << 19)
+
+#define UNYAFFS2_ISSHOWBAR	(unyaffs2_flags & UNYAFFS2_FLAGS_SHOWBAR)
+#define UNYAFFS2_ISYAFFS1	(unyaffs2_flags & UNYAFFS2_FLAGS_YAFFS1)
+#define UNYAFFS2_ISENDIAN	(unyaffs2_flags & UNYAFFS2_FLAGS_ENDIAN)
+#define UNYAFFS2_ISRAWOOB	(unyaffs2_flags & UNYAFFS2_FLAGS_RAWOOB)
+#define UNYAFFS2_ISVERBOSE	(unyaffs2_flags & UNYAFFS2_FLAGS_VERBOSE)
+
+#define UNYAFFS2_PRINT(s, args...) \
+		do { \
+			fprintf(stdout, s, ##args); \
+			fflush(stdout); \
+		} while (0)
+
+#define UNYAFFS2_ERROR(s, args...) \
+		do { \
+			if (!UNYAFFS2_ISVERBOSE && UNYAFFS2_ISSHOWBAR) { \
+				unyaffs2_flags &= ~UNYAFFS2_FLAGS_SHOWBAR; \
+				fprintf(stderr, "\n"); \
+			} \
+			fprintf(stderr, s, ##args); \
+			fflush(stderr); \
+		} while (0)
+
+#define UNYAFFS2_HELP(s, args...)	UNYAFFS2_PRINT(s, ##args)
+#define UNYAFFS2_WARN(s, args...)	UNYAFFS2_ERROR(s, ##args)
+
+#ifdef _UNYAFFS2_DEBUG
+#define UNYAFFS2_DEBUG(s, args...)	UNYAFFS2_ERROR("%s: " s, \
+						       __FUNCTION__, ##args)
+#else
+#define UNYAFFS2_DEBUG(s, args...)
+#endif
+
+#define UNYAFFS2_VERBOSE(s, args...) \
+		do { \
+			if (UNYAFFS2_ISVERBOSE) \
+				UNYAFFS2_PRINT(s, ##args); \
+		} while (0)
+
+#define UNYAFFS2_PROGRESS_INIT() \
+		do { \
+			if (!UNYAFFS2_ISVERBOSE) \
+				progress_init(); \
+		} while (0)
+
+#define UNYAFFS2_PROGRESS_BAR(objs, total) \
+		do { \
+			if (!UNYAFFS2_ISVERBOSE) { \
+				unyaffs2_flags |= UNYAFFS2_FLAGS_SHOWBAR; \
+				progress_bar(objs, total); \
+			} \
+		} while(0)
 
 /*-------------------------------------------------------------------------*/
 
 typedef struct unyaffs2_file_var {
 	loff_t file_size;
+	off_t file_head;
 } unyaffs2_file_var_t;
 
 typedef struct unyaffs2_symlink_var {
@@ -74,19 +140,17 @@ typedef union unyaffs2_file_variant {
 	struct unyaffs2_symlink_var symlink;
 	struct unyaffs2_hardlink_var hardlink;
 	struct unyaffs2_dev_var dev;
-} unyaffs2_file_variant;
+} unyaffs2_file_variant_t;
 
 typedef struct unyaffs2_obj {
 	unsigned char valid:1;
 	unsigned char extracted:1;	/* 1 when extracted. */
 
+	off_t hdr_off;			/* header offset in the image */
+
 	unsigned obj_id;
 	unsigned parent_id;
 	struct unyaffs2_obj *parent_obj;
-
-	off_t hdr_off;			/* header offset in the image */
-
-	char name[NAME_MAX + 1];
 
 	enum yaffs_obj_type type;	/* file type */
 	union unyaffs2_file_variant variant;
@@ -100,9 +164,9 @@ typedef struct unyaffs2_obj {
 	unsigned mtime;
 	unsigned ctime;
 
-	struct list_head hashlist;      /* hash table */
-	struct list_head hardlink;	/* hardlink list */
+	char name[NAME_MAX + 1];
 
+	struct list_head hashlist;      /* hash table */
 	struct list_head children;	/* if it is the directory */
 	struct list_head siblings;	/* neighbors of fs tree */
 } unyaffs2_obj_t;
@@ -127,45 +191,6 @@ typedef struct unyaffs2_mmap {
 
 /*-------------------------------------------------------------------------*/
 
-#define UNYAFFS2_OBJTABLE_SIZE	YAFFS_NOBJECT_BUCKETS
-
-#define UNYAFFS2_FLAGS_NONROOT	0x01
-#define UNYAFFS2_FLAGS_YAFFS1	0x02
-#define UNYAFFS2_FLAGS_ENDIAN	0x04
-#define UNYAFFS2_FLAGS_VERBOSE	0x08
-
-#define UNYAFFS2_ISYAFFS1	(unyaffs2_flags & UNYAFFS2_FLAGS_YAFFS1)
-#define UNYAFFS2_ISENDIAN	(unyaffs2_flags & UNYAFFS2_FLAGS_ENDIAN)
-#define UNYAFFS2_ISVERBOSE	(unyaffs2_flags & UNYAFFS2_FLAGS_VERBOSE)
-
-#define UNYAFFS2_PRINT(s, args...)	fprintf(stdout, s, ##args)
-
-#define UNYAFFS2_ERROR(s, args...)	fprintf(stderr, s, ##args)
-
-#define UNYAFFS2_WARN(s, args...)	UNYAFFS2_ERROR(s, ##args)
-
-#define UNYAFFS2_HELP(s, args...) 	UNYAFFS2_ERROR(s, ##args)
-
-#ifdef _UNYAFFS2_DEBUG
-#define UNYAFFS2_DEBUG(s, args...)	UNYAFFS2_ERROR(s, ##args)
-#else
-#define UNYAFFS2_DEBUG(s, args...)
-#endif
-
-#define UNYAFFS2_VERBOSE(s, args...) \
-		({if (UNYAFFS2_ISVERBOSE) \
-			UNYAFFS2_PRINT(s, ##args);})
-
-#define UNYAFFS2_PROGRESS_INIT() \
-		({ if (!UNYAFFS2_ISVERBOSE) \
-			progress_init();})
-
-#define UNYAFFS2_PROGRESS_BAR(objs, all) \
-		({ if (!UNYAFFS2_ISVERBOSE) \
-			progress_bar(objs, all);})
-
-/*-------------------------------------------------------------------------*/
-
 static unsigned unyaffs2_chunksize = 0;
 static unsigned unyaffs2_sparesize = 0;
 
@@ -181,7 +206,6 @@ static int unyaffs2_image_fd = -1;
 static char unyaffs2_curfile[PATH_MAX + PATH_MAX] = {0};
 static char unyaffs2_linkfile[PATH_MAX + PATH_MAX] = {0};
 
-static LIST_HEAD(unyaffs2_hardlink_list);	/* hardlink */
 static LIST_HEAD(unyaffs2_specfile_list);	/* specfied files */
 
 static nand_ecclayout_t *unyaffs2_oobinfo = NULL;
@@ -206,7 +230,6 @@ unyaffs2_obj_alloc (void)
 
 	obj->parent_obj = obj;
 
-	INIT_LIST_HEAD(&obj->hardlink);
 	INIT_LIST_HEAD(&obj->children);
 	INIT_LIST_HEAD(&obj->siblings);
 	INIT_LIST_HEAD(&obj->hashlist);
@@ -221,7 +244,6 @@ unyaffs2_obj_free (struct unyaffs2_obj *obj)
 	    obj->variant.symlink.alias != NULL)
 		free(obj->variant.symlink.alias);
 
-	list_del(&obj->hardlink);
 	list_del(&obj->children);
 	list_del(&obj->siblings);
 	list_del(&obj->hashlist);
@@ -249,7 +271,7 @@ unyaffs2_objtable_insert (struct unyaffs2_obj *obj)
 }
 
 static inline struct unyaffs2_obj *
-unyaffs2_objtable_lookup (unsigned obj_id)
+unyaffs2_objtable_find (unsigned obj_id)
 {
 	unsigned n = unyaffs2_objtable_hash(obj_id);
 	struct list_head *p;
@@ -262,6 +284,24 @@ unyaffs2_objtable_lookup (unsigned obj_id)
 	}
 
 	return NULL;
+}
+
+static struct unyaffs2_obj *
+unyaffs2_objtable_find_alloc (unsigned obj_id)
+{
+	struct unyaffs2_obj *obj;
+
+	obj = unyaffs2_objtable_find(obj_id);
+	if (obj)
+		return obj;
+
+	obj = unyaffs2_obj_alloc();
+	if (obj) {
+		obj->obj_id = obj_id;
+		unyaffs2_objtable_insert(obj);
+	}
+
+	return obj;
 }
 
 static inline void
@@ -341,7 +381,7 @@ unyaffs2_objtree_exit (struct unyaffs2_fstree *fst)
  */
 
 static struct unyaffs2_specfile *
-unyaffs2_specfile_lookup (const char *path) 
+unyaffs2_specfile_find (const char *path) 
 {
 	struct unyaffs2_specfile *spec;
 	struct list_head *p;
@@ -376,24 +416,33 @@ unyaffs2_specfile_insert (const char *path)
 	while (e > s && e[0] == '/')
 		e--;
 
-	if (e <= s)
+	if (e <= s) {
+		UNYAFFS2_DEBUG("unsupport path format: %s\n", path);
 		return -1;
-
-	spec = calloc(sizeof(struct unyaffs2_specfile), sizeof(unsigned char));
-	if (spec) {
-		len = e - s + 1;
-		spec->path = calloc(len + 1, sizeof(unsigned char));
-		if (spec->path == NULL) {
-			free(spec);
-			return -1;
-		}
-		memcpy(spec->path, s, len);
-		spec->path[len] = '\0';
-
-		list_add_tail(&spec->list, &unyaffs2_specfile_list);
 	}
 
-	return (spec == NULL);
+	spec = calloc(sizeof(struct unyaffs2_specfile), sizeof(unsigned char));
+	if (!spec) {
+		UNYAFFS2_DEBUG("allocate obj failed for '%s': %s\n",
+				path, strerror(errno));
+		return -1;
+	}
+
+	len = e - s + 1;
+	spec->path = calloc(len + 1, sizeof(unsigned char));
+	if (spec->path == NULL) {
+		UNYAFFS2_DEBUG("allocate string failed for '%s': %s\n",
+				path, strerror(errno));
+		free(spec);
+		return -1;
+	}
+
+	memcpy(spec->path, s, len);
+	spec->path[len] = '\0';
+
+	list_add_tail(&spec->list, &unyaffs2_specfile_list);
+
+	return 0;
 }
 
 static void
@@ -444,7 +493,7 @@ unyaffs2_prefix_basestr(const char *path, const char *prefix)
 	size_t len = 0;
 
 	if ((len = strlen(prefix)) != 0 &&
-	    strncasecmp(path, prefix, len) == 0 &&
+	    strncmp(path, prefix, len) == 0 &&
 	    (path[len] == '\0' || path[len] == '/')) {
 		p = strrchr(prefix, '/');
 		p = p ? (char *)path + (p - prefix) + 1: (char *)path;
@@ -470,8 +519,6 @@ unyaffs2_spare2tag (unsigned char *tag, unsigned char *spare, size_t bytes)
 			size = oobfree[i].length;
 
 		memcpy(tag, s, size);
-		if (memcmp(tag, s, size))
-			return -1;
 
 		copied += size;
 		tag += size;
@@ -491,7 +538,7 @@ unyaffs2_extract_packedtags (struct yaffs_ext_tags *tag, unsigned char *buf)
 				   sizeof(struct yaffs_packed_tags1));
 
 		if (UNYAFFS2_ISENDIAN)
-			packedtags1_endian_transform(&pt1, 1);
+			packedtags1_endian_convert(&pt1, 1);
 
 		yaffs_unpack_tags1(tag, &pt1);
 	}
@@ -503,7 +550,7 @@ unyaffs2_extract_packedtags (struct yaffs_ext_tags *tag, unsigned char *buf)
 				   sizeof(struct yaffs_packed_tags2));
 
 		if (UNYAFFS2_ISENDIAN)
-			packedtags2_tagspart_endian_transform(&pt2);
+			packedtags2_tagspart_endian_convert(&pt2);
 
 		yaffs_unpack_tags2_tags_only(tag, &pt2.t);
 	}
@@ -534,6 +581,69 @@ unyaffs2_extract_oh_size (struct yaffs_obj_hdr *oh)
 	return retval;
 }
 
+static int
+unyaffs2_oh2obj (struct unyaffs2_obj *obj, struct yaffs_obj_hdr *oh)
+{
+	switch (oh->type) {
+	case YAFFS_OBJECT_TYPE_FILE:
+		obj->type = YAFFS_OBJECT_TYPE_FILE;
+		obj->variant.file.file_size = unyaffs2_extract_oh_size(oh);
+		break;
+	case YAFFS_OBJECT_TYPE_SYMLINK:
+		obj->type = YAFFS_OBJECT_TYPE_SYMLINK;
+		obj->variant.symlink.alias = strdup(oh->alias);
+		break;
+	case YAFFS_OBJECT_TYPE_DIRECTORY:
+		obj->type = YAFFS_OBJECT_TYPE_DIRECTORY;
+		break;
+	case YAFFS_OBJECT_TYPE_HARDLINK:
+		obj->type = YAFFS_OBJECT_TYPE_HARDLINK;
+		obj->variant.hardlink.equiv_obj =
+			unyaffs2_objtable_find(oh->equiv_id);
+		break;
+	case YAFFS_OBJECT_TYPE_SPECIAL:
+		switch (oh->yst_mode & S_IFMT) {
+		case S_IFCHR:
+			obj->type = YAFFS_OBJECT_TYPE_CHR;
+			break;
+		case S_IFBLK:
+			obj->type = YAFFS_OBJECT_TYPE_BLK;
+			break;
+		case S_IFIFO:
+			obj->type = YAFFS_OBJECT_TYPE_FIFO;
+			break;
+		case S_IFSOCK:
+			obj->type = YAFFS_OBJECT_TYPE_SOCK;
+			break;
+		default:
+			obj->type = YAFFS_OBJECT_TYPE_UNKNOWN;
+			break;
+		}
+
+		if (obj->type != YAFFS_OBJECT_TYPE_UNKNOWN)
+			obj->variant.dev.rdev = oh->yst_rdev;
+		break;
+	default:
+		obj->type = YAFFS_OBJECT_TYPE_UNKNOWN;
+		return -1;
+	}
+
+	obj->parent_id = oh->parent_obj_id;
+	strncpy(obj->name, oh->name, NAME_MAX);
+
+	if (obj->type != YAFFS_OBJECT_TYPE_HARDLINK &&
+	    obj->type != YAFFS_OBJECT_TYPE_UNKNOWN) {
+		obj->mode = oh->yst_mode;
+		obj->uid = oh->yst_uid;
+		obj->gid = oh->yst_gid;
+		obj->atime = oh->yst_atime;
+		obj->mtime = oh->yst_mtime;
+		obj->ctime = oh->yst_ctime;
+	}
+
+	return 0;
+}
+
 /*-------------------------------------------------------------------------*/
 
 static void
@@ -557,13 +667,13 @@ unyaffs2_format_filepath (char *path, size_t size, struct unyaffs2_obj *obj)
 static struct unyaffs2_obj *
 unyaffs2_follow_hardlink (struct unyaffs2_obj *obj)
 {
-	unsigned link_count = 0;
+	unsigned link_counts = 0;
 	struct unyaffs2_obj *equiv = obj;
 
 	while (equiv && equiv->valid &&
 	       equiv->type == YAFFS_OBJECT_TYPE_HARDLINK) {
 		equiv = equiv->variant.hardlink.equiv_obj;
-		if (++link_count > YAFFS_MAX_OBJECT_ID) {
+		if (++link_counts > UNYAFFS2_HARDLINK_MAX) {
 			/* make sure everything is right */
 			UNYAFFS2_DEBUG("too many links for object %d\n",
 					obj->obj_id);
@@ -610,13 +720,6 @@ unyaffs2_objtree_chattr (struct unyaffs2_obj *obj)
 {
 	struct list_head *p;
 	struct unyaffs2_obj *child;
-
-	if (obj == NULL) {
-		if (unyaffs2_objtree.root == NULL)
-			return 0;
-
-		return unyaffs2_objtree_chattr(unyaffs2_objtree.root);
-	}
 
 	/* format the file path */
 	if (unyaffs2_curfile[0] != '\0' &&
@@ -674,6 +777,59 @@ unyaffs2_scan_img_status (unsigned status)
 }
 
 static int
+unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
+{
+	struct yaffs_ext_tags tag;
+	struct unyaffs2_obj *obj;
+	struct yaffs_obj_hdr *oh;
+
+	unyaffs2_extract_packedtags(&tag, buffer + unyaffs2_chunksize);
+
+	/* empty page? */
+	if (tag.obj_id <= YAFFS_OBJECTID_DELETED ||
+	    tag.obj_id == YAFFS_OBJECTID_SUMMARY ||
+	    !tag.chunk_used) {
+		UNYAFFS2_DEBUG("empty page skipped\n");
+		return 0;
+	}
+
+	if (tag.chunk_id == 0) {
+	/* a new object */
+		obj = unyaffs2_objtable_find_alloc(tag.obj_id);
+		if (obj == NULL) {
+			UNYAFFS2_ERROR("cannot allocate memory ");
+			UNYAFFS2_ERROR("for object %u\n", tag.obj_id);
+			return -1;
+		}
+
+		oh = (struct yaffs_obj_hdr *)buffer;
+
+		if (UNYAFFS2_ISENDIAN)
+			oh_endian_convert(oh);
+
+		/* extract oh to obj */
+		unyaffs2_oh2obj(obj, oh);
+		obj->obj_id = tag.obj_id;
+		obj->hdr_off = offset;
+		obj->valid = 1;
+	}
+	else if (tag.chunk_id == 1) {
+	/* the first data chunk of a object */
+		obj = unyaffs2_objtable_find_alloc(tag.obj_id);
+		if (obj == NULL) {
+			UNYAFFS2_ERROR("cannot allocate memory ");
+			UNYAFFS2_ERROR("for object %u\n", tag.obj_id);
+			return -1;
+		}
+
+		obj->type = YAFFS_OBJECT_TYPE_FILE;
+		obj->variant.file.file_head = offset;
+	}
+
+	return 0;
+}
+
+static int
 unyaffs2_scan_img (void)
 {
 	off_t offset = 0;
@@ -684,13 +840,13 @@ unyaffs2_scan_img (void)
 #endif
 
 	if (unyaffs2_image_fd < 0) {
-		UNYAFFS2_DEBUG("bad file descriptor\n");
+		UNYAFFS2_DEBUG("bad file descriptor.\n");
 		return 0;
 	}
 
 #ifdef _HAVE_MMAP
 	if (unyaffs2_mmapinfo.addr == NULL) {
-		UNYAFFS2_DEBUG("NULL address while mmap\n");
+		UNYAFFS2_DEBUG("NULL mmap address.\n");
 		return 0;
 	}
 #endif
@@ -700,59 +856,23 @@ unyaffs2_scan_img (void)
 	while (offset < unyaffs2_mmapinfo.size && remains >= unyaffs2_bufsize &&
 	       memcpy(unyaffs2_databuf,
 		      unyaffs2_mmapinfo.addr + offset, unyaffs2_bufsize)) {
+		if (memcmp(unyaffs2_databuf, 
+		    unyaffs2_mmapinfo.addr + offset, unyaffs2_bufsize)) {
 #else
 	offset = lseek(unyaffs2_image_fd, 0, SEEK_SET);
 	while ((reads = safe_read(unyaffs2_image_fd,
 				  unyaffs2_databuf, unyaffs2_bufsize)) != 0) {
-#endif
-		struct yaffs_ext_tags tag;
-		struct unyaffs2_obj *obj;
-		struct yaffs_obj_hdr *oh;
-
-#ifdef _HAVE_MMAP
-		if (memcmp(unyaffs2_databuf, 
-		    unyaffs2_mmapinfo.addr + offset, unyaffs2_bufsize)) {
-#else
 		if (reads != unyaffs2_bufsize) {
 #endif
 			/* parse image failed */
-			UNYAFFS2_ERROR("error while parsing the image ");
-			UNYAFFS2_ERROR("@ offset %lu\n", offset);
+			UNYAFFS2_ERROR("read image failed @ offset %lu.",
+					offset);
 			return -1;
 		}
 
-		unyaffs2_extract_packedtags(&tag,
-					    unyaffs2_databuf +
-					    unyaffs2_chunksize);
+		if (!unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize))
+			unyaffs2_scan_chunk(unyaffs2_databuf, offset);
 
-		if (unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize) ||
-		    !tag.obj_id || !tag.chunk_used) {
-			UNYAFFS2_DEBUG("empty page skipped\n");
-			goto next;
-		}
-
-		/* a new object */
-		if (tag.chunk_id == 0 &&
-		    tag.obj_id > YAFFS_OBJECTID_DELETED) {
-			obj = unyaffs2_obj_alloc();
-			if (obj == NULL) {
-				UNYAFFS2_ERROR("cannot allocate memory ");
-				UNYAFFS2_ERROR("for object %u\n", tag.obj_id);
-				return -1;
-			}
-
-			oh = (struct yaffs_obj_hdr *)unyaffs2_databuf;
-			if (UNYAFFS2_ISENDIAN)
-				oh_endian_transform(oh);
-
-			obj->obj_id = tag.obj_id;
-			obj->parent_id = oh->parent_obj_id;
-			obj->hdr_off = offset;
-
-			unyaffs2_objtable_insert(obj);
-			unyaffs2_scan_img_status(++unyaffs2_image_objs);
-		}
-next:
 #if _HAVE_MMAP
 		offset += unyaffs2_bufsize;
 		remains -= unyaffs2_bufsize;
@@ -792,6 +912,8 @@ unyaffs2_create_fakeroot (const char *path)
 	obj->mtime = s.st_mtime;
 	obj->ctime = s.st_ctime;
 
+	obj->valid = 1;
+
 	unyaffs2_image_objs++;
 
 	return obj;
@@ -804,13 +926,13 @@ unyaffs2_create_objtree (void)
 	struct list_head *p;
 	struct unyaffs2_obj *obj, *parent;
 
-	unyaffs2_objtree.root = unyaffs2_objtable_lookup(YAFFS_OBJECTID_ROOT);
+	unyaffs2_objtree.root = unyaffs2_objtable_find(YAFFS_OBJECTID_ROOT);
 
 	for (n = 0; n < UNYAFFS2_OBJTABLE_SIZE; n++) {
 		list_for_each(p, &unyaffs2_objtable[n]) {
 			obj = list_entry(p, unyaffs2_obj_t, hashlist);
 
-			parent = unyaffs2_objtable_lookup(obj->parent_id);
+			parent = unyaffs2_objtable_find(obj->parent_id);
 			if (parent && obj != parent) {
 				list_add_tail(&obj->siblings,
 					      &parent->children);
@@ -829,21 +951,10 @@ unyaffs2_validate_objtree (struct unyaffs2_obj *obj)
 	struct list_head *p;
 	struct unyaffs2_obj *child;
 
-	if (obj == NULL) {
-		if (unyaffs2_objtree.root == NULL &&
-		    (unyaffs2_objtree.root =
-		     unyaffs2_objtable_lookup(YAFFS_OBJECTID_ROOT)) == NULL) {
-			UNYAFFS2_ERROR("cannot find the root object ");
-			UNYAFFS2_ERROR("(image broken?)\n");
-			return -1;
-		}
-
-		unyaffs2_objtree.objs = 0;
-		return unyaffs2_validate_objtree(unyaffs2_objtree.root);
-	}
+	if (obj == NULL)
+		return -1;
 
 	/* FIXME: validation? */
-	obj->valid = 1;
 	unyaffs2_scan_img_status(++unyaffs2_objtree.objs);
 
 	list_for_each(p, &obj->children) {
@@ -866,8 +977,8 @@ unyaffs2_build_objtree (void)
 
 #ifdef _HAVE_MMAP
 static int
-unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
-			    const char *fpath, struct unyaffs2_obj *obj)
+unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, const char *fpath,
+			    struct unyaffs2_obj *obj)
 {
 	int outfd;
 	unsigned char *outaddr, *curaddr, *endaddr = addr + size;
@@ -876,31 +987,34 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 
 	struct yaffs_ext_tags tag;
 
+	if (fsize == 0)
+		return creat(fpath, obj->mode);
+
 	outfd = open(fpath, O_RDWR | O_CREAT | O_TRUNC, obj->mode);
 	if (outfd < 0) {
-		fprintf(stderr, "cannot create file '%s'\n", fpath);
+		UNYAFFS2_DEBUG("cannot create file '%s'; %s\n",
+				fpath, strerror(errno));
 		return -1;
 	}
-
-	if (fsize == 0)
-		goto out;
 
 	/* stretch the file */
 	if (lseek(outfd, fsize - 1, SEEK_SET) < 0 ||
 	    safe_write(outfd, "", 1) != 1) {
-		UNYAFFS2_ERROR("cannot stretch the file '%s'\n", fpath);
+		UNYAFFS2_DEBUG("cannot stretch the file '%s': %s\n",
+				fpath, strerror(errno));
 		goto out;
 	}
 
 	/* now mmap */
 	outaddr = mmap(NULL, fsize, PROT_WRITE | PROT_READ,
 		       MAP_SHARED, outfd, 0);
-	if (outaddr == NULL) {
-		UNYAFFS2_ERROR("cannot mmap the file '%s'\n", fpath);
+	if (outaddr == MAP_FAILED) {
+		UNYAFFS2_DEBUG("cannot mmap the file '%s': %s\n",
+				fpath, strerror(errno));
 		goto out;
 	}
 
-	addr += off;
+	addr += obj->variant.file.file_head;
 	curaddr = outaddr;
 	remains = fsize;
 
@@ -910,7 +1024,8 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, off_t off,
 		written = remains < tag.n_bytes ? remains : tag.n_bytes;
 		memcpy(curaddr, addr, written);
 		if (memcmp(curaddr, addr, written)) {
-			UNYAFFS2_ERROR("error while writing file '%s'\n", fpath);
+			UNYAFFS2_DEBUG("copy file failed '%s': %s\n",
+					fpath, strerror(errno));
 			break;
 		}
 
@@ -927,8 +1042,8 @@ out:
 }
 #else
 static int
-unyaffs2_extract_file (const int fd, off_t off,
-		       const char *fpath, struct unyaffs2_obj *obj)
+unyaffs2_extract_file (const int fd, const char *fpath,
+		       struct unyaffs2_obj *obj)
 {
 	int outfd;
 	size_t written = 0, size = obj->variant.file.file_size;
@@ -941,19 +1056,20 @@ unyaffs2_extract_file (const int fd, off_t off,
 
 	outfd = open(fpath, O_WRONLY | O_CREAT | O_TRUNC, obj->mode);
 	if (outfd < 0) {
-		UNYAFFS2_ERROR("cannot create file '%s'\n", fpath);
+		UNYAFFS2_DEBUG("cannot create file '%s': %s\n",
+				fpath, strerror(errno));
 		return -1;
 	}
 
-	lseek(fd, off, SEEK_SET);
+	lseek(fd, obj->variant.file.file_head, SEEK_SET);
 
 	/* read image until the size is reached */
 	while (written < size &&
 	       (r = safe_read(fd, unyaffs2_databuf, unyaffs2_bufsize)) != 0)
 	{
 		if (r != unyaffs2_bufsize) {
-			UNYAFFS2_DEBUG("error while reading image for '%s'\n",
-					fpath);
+			UNYAFFS2_DEBUG("read image failed '%s': %s\n",
+					fpath, strerror(errno));
 			break;
 		}
 
@@ -963,7 +1079,8 @@ unyaffs2_extract_file (const int fd, off_t off,
 
 		w = safe_write(outfd, unyaffs2_databuf, tag.n_bytes);
 		if (w != tag.n_bytes) {
-			UNYAFFS2_DEBUG("error while writing file '%s'", fpath);
+			UNYAFFS2_DEBUG("write file failed '%s': %s",
+					fpath, strerror(errno));
 			break;
 		}
 
@@ -976,116 +1093,150 @@ unyaffs2_extract_file (const int fd, off_t off,
 }
 #endif
 
+static int unyaffs2_extract_obj (const char *fpath, struct unyaffs2_obj *obj);
+
 static int
-unyaffs2_extract_hardlink (struct list_head *hardlink)
+unyaffs2_extract_hardlink (const char *fpath, struct unyaffs2_obj *obj)
 {
-	char *dstfile, *lnkfile;
-	struct list_head *p, *list;
-	struct unyaffs2_obj *obj, *equiv;
+	int retval = -1;
+	char *lnkfile;
 
-	list = hardlink ? hardlink : &unyaffs2_hardlink_list;
+	struct unyaffs2_obj *equiv;
+	union unyaffs2_file_variant *variant;
 
-	list_for_each(p, list) {
-		UNYAFFS2_PROGRESS_BAR(++unyaffs2_image_objs,
-				      unyaffs2_objtree.objs);
-
-		obj = list_entry(p, unyaffs2_obj_t, hardlink);
-		equiv = unyaffs2_follow_hardlink(obj);
-		if (equiv == NULL)
-			continue;
-
-		memset(unyaffs2_curfile, 0, sizeof(unyaffs2_curfile));
-		unyaffs2_format_filepath(unyaffs2_curfile,
-					 sizeof(unyaffs2_curfile), obj);
-
-		memset(unyaffs2_linkfile, 0, sizeof(unyaffs2_linkfile));
-		unyaffs2_format_filepath(unyaffs2_linkfile,
-					 sizeof(unyaffs2_linkfile), equiv);
-
-		/* if a file(set) is specified */
-		dstfile = unyaffs2_curfile;
-		lnkfile = unyaffs2_linkfile;
-		if (!list_empty(&unyaffs2_specfile_list)) {
-			struct unyaffs2_specfile *spec;
-
-			spec = unyaffs2_specfile_lookup(unyaffs2_curfile);
-			dstfile = (spec == NULL) ? NULL : 
-				  unyaffs2_prefix_basestr(unyaffs2_curfile,
-							  spec->path);
-
-			spec = unyaffs2_specfile_lookup(unyaffs2_linkfile);
-			lnkfile = (spec == NULL) ? NULL : 
-				  unyaffs2_prefix_basestr(unyaffs2_linkfile,
-							  spec->path);
-		}
-
-		if (!dstfile)
-			continue;
-
-		/* unlink the file if it is existed */
-		if (!access(dstfile, F_OK))
-			unlink(dstfile);
-
-		/* link them, silent on errors */
-		if (lnkfile && equiv->extracted) {
-			link(lnkfile, dstfile);
-			continue;
-		}
-
-		/* 
-		 * if the linked file was NOT existed (or extracted),
-		 * extracting the file content based on the equiv obj.
-		 */
-		obj->type = equiv->type;
-		obj->mode = equiv->mode;
-		obj->uid = equiv->uid;
-		obj->gid = equiv->gid;
-		obj->atime = equiv->atime;
-		obj->mtime = equiv->mtime;
-		obj->ctime = equiv->ctime;
-
-		switch (obj->type) {
-		case YAFFS_OBJECT_TYPE_FILE:
-			obj->variant.file.file_size =
-				equiv->variant.file.file_size;
-#ifdef _HAVE_MMAP
-			unyaffs2_extract_file_mmap(unyaffs2_mmapinfo.addr,
-						   unyaffs2_mmapinfo.size,
-						   equiv->hdr_off +
-						   unyaffs2_bufsize,
-						   dstfile, obj);
-#else
-			unyaffs2_extract_file(unyaffs2_image_fd,
-					      equiv->hdr_off + unyaffs2_bufsize,
-					      dstfile, obj);
-#endif
-		break;
-		case YAFFS_OBJECT_TYPE_DIRECTORY:
-			unyaffs2_mkdir(dstfile, 0755);
-			break;
-		case YAFFS_OBJECT_TYPE_SYMLINK:
-			obj->variant.symlink.alias =
-				strdup(equiv->variant.symlink.alias);
-			if (obj->variant.symlink.alias) { 
-				unlink(dstfile);
-				symlink(obj->variant.symlink.alias, dstfile);
-			}
-			break;
-		case YAFFS_OBJECT_TYPE_SPECIAL:
-			if ((obj->mode & S_IFMT) &
-			    (S_IFBLK | S_IFCHR | S_IFIFO | S_IFSOCK)) {
-				obj->variant.dev.rdev = obj->variant.dev.rdev;
-				mknod(dstfile, obj->mode,
-				      obj->variant.dev.rdev);
-			}
-			break;
-		default:
-			/* unsupported type, including HARDLINK. */
-			break;
-		}
+	equiv = unyaffs2_follow_hardlink(obj);
+	if (equiv == NULL) {
+		UNYAFFS2_DEBUG("equiv object NOT found.\n");
+		return -1;
 	}
 
-	return 0;
+	/* path of linked file */
+	memset(unyaffs2_linkfile, 0, sizeof(unyaffs2_linkfile));
+	unyaffs2_format_filepath(unyaffs2_linkfile,
+				 sizeof(unyaffs2_linkfile), equiv);
+
+	/* for specified files */
+	lnkfile = unyaffs2_linkfile;
+	if (!list_empty(&unyaffs2_specfile_list)) {
+		struct unyaffs2_specfile *spec;
+
+		spec = unyaffs2_specfile_find(unyaffs2_linkfile);
+		lnkfile = (spec == NULL) ? NULL : 
+			  unyaffs2_prefix_basestr(unyaffs2_linkfile,
+						  spec->path);
+	}
+	
+	/* unlink the original file always */
+	unlink(fpath);
+
+	/*
+	 * equiv obj was extracted before,
+	 * link them, silent on errors
+	 */
+	if (lnkfile && equiv->extracted)
+		return link(lnkfile, fpath);
+
+	/*
+	 * FIXME: better solution!? 
+	 * if the linked file was NOT existed (or extracted),
+	 * try extracting the file content based on the equiv obj and
+	 * swap their objects' information.
+	 */
+	UNYAFFS2_DEBUG("The target file is NOT extracted before ('%s'), "
+		       "and a new file will be created based on "
+		       "the content of target '%s'.\n",
+			unyaffs2_linkfile, fpath);
+
+	/* backup the file variant */
+	memcpy(&variant, &obj->variant, sizeof(obj->variant));
+	memset(&obj->variant, 0, sizeof(obj->variant));
+
+	obj->type = equiv->type;
+	obj->mode = equiv->mode;
+	obj->uid = equiv->uid;
+	obj->gid = equiv->gid;
+	obj->atime = equiv->atime;
+	obj->mtime = equiv->mtime;
+	obj->ctime = equiv->ctime;
+
+	switch (obj->type) {
+	case YAFFS_OBJECT_TYPE_FILE:
+	case YAFFS_OBJECT_TYPE_SYMLINK:
+	case YAFFS_OBJECT_TYPE_CHR:
+	case YAFFS_OBJECT_TYPE_BLK:
+	case YAFFS_OBJECT_TYPE_FIFO:
+	case YAFFS_OBJECT_TYPE_SOCK:
+		memcpy(&obj->variant, &equiv->variant,
+		       sizeof(union unyaffs2_file_variant));
+		break;
+	default:
+		break;
+	}
+
+	retval = unyaffs2_extract_obj(fpath, obj);
+
+	/*
+	 * if the file content is NOT extracted, restore the object; 
+	 * otherwise, swap two objects information.
+	 */
+	if (retval) {
+		UNYAFFS2_DEBUG("extract file content failed, restore it\n");
+		obj->type = YAFFS_OBJECT_TYPE_HARDLINK;
+		memcpy(&obj->variant, &variant, sizeof(variant));
+		unlink(fpath);
+	}
+	else {
+		equiv->type = YAFFS_OBJECT_TYPE_HARDLINK;
+		memset(&equiv->variant, 0, sizeof(equiv->variant));
+		equiv->variant.hardlink.equiv_obj = obj;
+	}
+
+	return retval;
+}
+
+static int
+unyaffs2_extract_obj (const char *fpath, struct unyaffs2_obj *obj)
+{
+	int retval = 0;
+
+	switch (obj->type) {
+	case YAFFS_OBJECT_TYPE_FILE:
+		retval =
+#ifdef _HAVE_MMAP
+		unyaffs2_extract_file_mmap(unyaffs2_mmapinfo.addr,
+					   unyaffs2_mmapinfo.size,
+					   fpath, obj);
+#else
+		unyaffs2_extract_file(unyaffs2_image_fd,
+				      fpath, obj);
+#endif
+		break;
+	case YAFFS_OBJECT_TYPE_DIRECTORY:
+		retval = unyaffs2_mkdir(fpath, 0755);
+		break;
+	case YAFFS_OBJECT_TYPE_HARDLINK:
+		retval = unyaffs2_extract_hardlink(unyaffs2_curfile, obj);
+		break;
+	case YAFFS_OBJECT_TYPE_SYMLINK:
+		retval = -1;
+		if (obj->variant.symlink.alias) { 
+			unlink(fpath);
+			retval = symlink(obj->variant.symlink.alias, fpath);
+		}
+		break;
+	case YAFFS_OBJECT_TYPE_CHR:
+	case YAFFS_OBJECT_TYPE_BLK:
+	case YAFFS_OBJECT_TYPE_FIFO:
+	case YAFFS_OBJECT_TYPE_SOCK:
+		retval = mknod(fpath, obj->mode,
+			       obj->variant.dev.rdev);
+		break;
+	default:
+		UNYAFFS2_DEBUG("skipped (unsupported type 0x%x).\n", obj->type);
+		break;
+	}
+
+	return retval;
 }
 
 static int
@@ -1102,6 +1253,10 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 	struct yaffs_obj_hdr oh;
 	struct unyaffs2_obj *child;
 
+	enum yaffs_obj_type type = YAFFS_OBJECT_TYPE_UNKNOWN;
+	static const char *type_str[] = {"????", "FILE", "SLNK", "DIR", "HLNK",
+					 "CHR", "BLK", "FIFO", "SOCK"};
+
 	if (obj == NULL) {
 		if (unyaffs2_objtree.root == NULL)
 			return 0;
@@ -1110,13 +1265,14 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 	}
 
 	if (!obj->valid) {
-		/* others should NOT happend */
-		UNYAFFS2_ERROR("obj %u is invalid!!!\n", obj->obj_id);
+		UNYAFFS2_ERROR("obj %u is invalid (type: 0x%x)!!!\n",
+				obj->obj_id, obj->type);
 		return -1;
 	}
 
 	/* skip root object always */
 	if (obj->obj_id == YAFFS_OBJECTID_ROOT) {
+		type = YAFFS_OBJECT_TYPE_DIRECTORY;
 		obj->extracted = 1;
 		goto next;
 	}
@@ -1127,44 +1283,37 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 #ifdef _HAVE_MMAP
 	memcpy(unyaffs2_databuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
 	       unyaffs2_bufsize);
+
+	if (memcmp(unyaffs2_databuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
+	    unyaffs2_bufsize)) {
 #else
 	lseek(unyaffs2_image_fd, obj->hdr_off, SEEK_SET);
 	reads = safe_read(unyaffs2_image_fd,
 			  unyaffs2_databuf, unyaffs2_bufsize);
-#endif
 
-#ifdef _HAVE_MMAP
-	if (memcmp(unyaffs2_databuf, unyaffs2_mmapinfo.addr + obj->hdr_off,
-	    unyaffs2_bufsize)) {
-#else
 	if (reads != unyaffs2_bufsize) {
 #endif
 		/* parse image failed */
-		UNYAFFS2_DEBUG("error while reading the image ");
-		UNYAFFS2_DEBUG("@ offset %lu\n", obj->hdr_off);
+		UNYAFFS2_DEBUG("read image failed @ offset %lu\n",
+				obj->hdr_off);
 		return -1;
 	}
 
 	memcpy(&oh, unyaffs2_databuf, sizeof(struct yaffs_obj_hdr));
 	if (UNYAFFS2_ISENDIAN)
-		oh_endian_transform(&oh);
+		oh_endian_convert(&oh);
 
 	unyaffs2_extract_packedtags(&tag,
-				    unyaffs2_databuf +
-				    unyaffs2_chunksize);
+				    unyaffs2_databuf + unyaffs2_chunksize);
 
 	if (unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize) ||
 	    !tag.chunk_used || tag.chunk_id != 0 || tag.obj_id != obj->obj_id ||
 	    oh.parent_obj_id != obj->parent_id) {
 		/* parse image failed */
-		UNYAFFS2_DEBUG("error while parsing the image ");
-		UNYAFFS2_DEBUG("@ offset %lu",obj->hdr_off);
-		UNYAFFS2_DEBUG("(is the same image?)\n");
+		UNYAFFS2_DEBUG("image corrupted @ offset %lu "
+			       "(is the same image)\n", obj->hdr_off);
 		return -1;
 	}
-
-	strncpy(obj->name, oh.name, NAME_MAX);
-	obj->type = oh.type;
 
 	/* format the file path */
 	if (unyaffs2_curfile[0] != '\0' &&
@@ -1173,114 +1322,52 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 			sizeof(unyaffs2_curfile) -
 			strlen(unyaffs2_curfile) - 1);
 
-	 strncat(unyaffs2_curfile, obj->name,
+	strncat(unyaffs2_curfile, obj->name,
 		 sizeof(unyaffs2_curfile) - strlen(unyaffs2_curfile) - 1);
+
+	UNYAFFS2_VERBOSE("NOW: '%s'. ", unyaffs2_curfile);
 
 	/* if a file(set) is specified */
 	if (!list_empty(&unyaffs2_specfile_list)) {
 		struct unyaffs2_specfile *spec = NULL;
 		dstfile = NULL;
-		spec = unyaffs2_specfile_lookup(unyaffs2_curfile);
+		spec = unyaffs2_specfile_find(unyaffs2_curfile);
 		if (spec) {
 			dstfile = unyaffs2_prefix_basestr(unyaffs2_curfile,
 							  spec->path);
 			if (!strcmp(unyaffs2_curfile, spec->path))
 				spec->obj = obj;
 		}
-
-		if (!dstfile)
-			goto next;
 	}
 
-	/* update obj field for hardlink and chattr used */
-	if (obj->type == YAFFS_OBJECT_TYPE_HARDLINK) {
-		/* 
-		 * all hardlink are listed into the unyaffs2_hardlink_list,
-		 * and they will be travel and extracted in the another process.
-		 */
-		UNYAFFS2_VERBOSE("hardlink: '%s'\n", dstfile);
-		obj->variant.hardlink.equiv_obj =
-			unyaffs2_objtable_lookup(oh.equiv_id);
-		list_add_tail(&obj->hardlink, &unyaffs2_hardlink_list);
-		goto next;
-	}
-	else {
-		obj->mode = oh.yst_mode;
-		obj->uid = oh.yst_uid;
-		obj->gid = oh.yst_gid;
-		obj->atime = oh.yst_atime;
-		obj->mtime = oh.yst_mtime;
-		obj->ctime = oh.yst_ctime;
-	}
-
-	switch (obj->type) {
-	case YAFFS_OBJECT_TYPE_FILE:
-		UNYAFFS2_VERBOSE("file: '%s'\n", dstfile);
-		obj->variant.file.file_size = unyaffs2_extract_oh_size(&oh);
-		retval =
-#ifdef _HAVE_MMAP
-		unyaffs2_extract_file_mmap(unyaffs2_mmapinfo.addr,
-					   unyaffs2_mmapinfo.size,
-					   obj->hdr_off + unyaffs2_bufsize,
-					   dstfile, obj);
-#else
-		unyaffs2_extract_file(unyaffs2_image_fd,
-				      obj->hdr_off + unyaffs2_bufsize,
-				      dstfile, obj);
-#endif
-		break;
-	case YAFFS_OBJECT_TYPE_DIRECTORY:
-		UNYAFFS2_VERBOSE("dir: '%s'\n", dstfile);
-		retval = unyaffs2_mkdir(dstfile, 0755);
-		break;
-	case YAFFS_OBJECT_TYPE_SYMLINK:
-		UNYAFFS2_VERBOSE("symlink: '%s'\n", dstfile);
-		retval = -1;
-		obj->variant.symlink.alias = strdup(oh.alias);
-		if (obj->variant.symlink.alias) { 
-			unlink(dstfile);
-			retval = symlink(obj->variant.symlink.alias, dstfile);
-		}
-		break;
-	case YAFFS_OBJECT_TYPE_SPECIAL:
-		if ((obj->mode & S_IFMT) &
-		    (S_IFBLK | S_IFCHR | S_IFIFO | S_IFSOCK)) {
-			obj->variant.dev.rdev = oh.yst_rdev;
-			UNYAFFS2_VERBOSE("dev: '%s'\n", dstfile);
-			retval = mknod(dstfile,
-				       obj->mode, obj->variant.dev.rdev);
-		}
-		break;
-	default:
-		if (UNYAFFS2_ISVERBOSE)
-			UNYAFFS2_WARN("unsupported type (%08x) for '%s'\n",
-				      obj->type, dstfile);
-		break;
-	}
+	if (dstfile)
+		retval = unyaffs2_extract_obj(dstfile, obj);
 
 next:
 	if (retval) {
-		UNYAFFS2_ERROR("%cerror while extracting '%s'\n",
-				UNYAFFS2_ISVERBOSE ? '\0' : '\n',
-				unyaffs2_curfile);
+		UNYAFFS2_ERROR("object %u: [%4s] '%s' (FAILED).\n",
+				obj->obj_id, type_str[type], unyaffs2_curfile);
 	}
 	else {
-		if (!dstfile) {
-		/* skip silently */
-			UNYAFFS2_PROGRESS_BAR(++unyaffs2_image_objs,
-					      unyaffs2_objtree.objs);
-		}
-		else if (obj->type != YAFFS_OBJECT_TYPE_HARDLINK) {
+
+		unyaffs2_image_objs++;
+
+		UNYAFFS2_PROGRESS_BAR(unyaffs2_image_objs,
+				      unyaffs2_objtree.objs);
+
+		if (dstfile)
 			obj->extracted = 1;
-			UNYAFFS2_PROGRESS_BAR(++unyaffs2_image_objs,
-					      unyaffs2_objtree.objs);
-		}
+
+		UNYAFFS2_VERBOSE("\robject %u: [%4s] '%s'%s.\n",
+				  obj->obj_id, type_str[obj->type],
+				  unyaffs2_curfile,
+				  obj->extracted ? "" : " (skip)");
 
 		/* search its children if it is a directory. */
 		if (obj->type == YAFFS_OBJECT_TYPE_DIRECTORY) {
 			list_for_each(p, &obj->children) {
-				child = list_entry(p, unyaffs2_obj_t,
-						   siblings);
+				child = list_entry(p, unyaffs2_obj_t, siblings);
+				/* extract contents as more as possible */
 				retval |= unyaffs2_extract_objtree(child);
 			}
 		}
@@ -1305,13 +1392,13 @@ unyaffs2_load_spare (const char *oobfile)
 		return 0;
 
 	if ((fd = open(oobfile, O_RDONLY)) < 0) {
-		UNYAFFS2_DEBUG("open oob image failed\n");
+		UNYAFFS2_DEBUG("open image failed: %s\n", strerror(errno));
 		return -1;
 	}
 
 	reads = safe_read(fd, &nand_oob_user, sizeof(nand_ecclayout_t));
 	if (reads != sizeof(nand_ecclayout_t)) {
-		UNYAFFS2_DEBUG("parse oob image failed\n");
+		UNYAFFS2_DEBUG("read image failed: %s\n", strerror(errno));
 		retval = -1;
 	}
 
@@ -1325,7 +1412,7 @@ unyaffs2_load_spare (const char *oobfile)
 static int
 unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 {
-	int retval = 0;
+	int retval = -1;
 	struct stat statbuf;
 	struct unyaffs2_obj *root;
 
@@ -1337,7 +1424,8 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 
 	if ((statbuf.st_size % (unyaffs2_chunksize + unyaffs2_sparesize)) != 0)
 	{
-		UNYAFFS2_ERROR("image size (%lu) is NOT a mutiple of %u + %u\n",
+		UNYAFFS2_ERROR("image size (%lu) is NOT a mutiple of %u + %u,\n"
+			       "try specifying the page and spare size\n",
 				statbuf.st_size, unyaffs2_chunksize,
 				unyaffs2_sparesize);
 		return -1;
@@ -1345,16 +1433,16 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 
 	unyaffs2_image_fd = open(imgfile, O_RDONLY);
 	if (unyaffs2_image_fd < 0) {
-		UNYAFFS2_ERROR("cannot open the image file: '%s'\n", imgfile);
+		UNYAFFS2_ERROR("cannot open the image file: '%s': %s\n",
+				imgfile, strerror(errno));
 		return -1;
 	}
 
 #if _HAVE_MMAP
 	unyaffs2_mmapinfo.addr = mmap(NULL, statbuf.st_size, PROT_READ,
 				      MAP_PRIVATE, unyaffs2_image_fd, 0);
-	if (unyaffs2_mmapinfo.addr == NULL) {
-		UNYAFFS2_ERROR("mapping image failed\n");
-		retval = -1;
+	if (unyaffs2_mmapinfo.addr == MAP_FAILED) {
+		UNYAFFS2_ERROR("mapping image failed: %s\n", strerror(errno));
 		goto free_and_out;
 	}
 
@@ -1364,9 +1452,9 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	unyaffs2_bufsize = unyaffs2_chunksize + unyaffs2_sparesize;
 	unyaffs2_databuf = (unsigned char *)malloc(unyaffs2_bufsize);
 	if (unyaffs2_databuf == NULL) {
-		UNYAFFS2_ERROR("cannot allocate working buffer ");
-		UNYAFFS2_ERROR("(default: %u bytes)\n",
-				unyaffs2_chunksize + unyaffs2_sparesize);
+		UNYAFFS2_ERROR("cannot allocate working buffer (%u bytes): %s",
+				unyaffs2_chunksize + unyaffs2_sparesize,
+				strerror(errno));
 		goto free_and_out;
 	}
 
@@ -1374,9 +1462,8 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 
 	if (unyaffs2_mkdir(dirpath, 0755) < 0 || chdir(dirpath) < 0 ||
 	    (root = unyaffs2_create_fakeroot(".")) == NULL) {
-		UNYAFFS2_ERROR("cannot access the directory ");
-		UNYAFFS2_ERROR("'%s' (permission deny?)", dirpath);
-		retval = -1;
+		UNYAFFS2_ERROR("cannot access the directory '%s' "
+			       "(permission deny?)", dirpath);
 		goto free_and_out;
 	}
 
@@ -1388,24 +1475,21 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	/* stage 1: scanning image */
 	UNYAFFS2_PRINT("scanning image '%s'... [*]", imgfile);
 
-	if (unyaffs2_scan_img() < 0) {
-		UNYAFFS2_ERROR("\nerror while scanning '%s'\n ", imgfile);
-		retval = -1;
+	if (unyaffs2_scan_img() < 0)
 		goto exit_and_out;
-	}
 
-	UNYAFFS2_PRINT("\b\b\b[done]\nscanning complete, total objects: %d\n",
+	UNYAFFS2_PRINT("\b\b\b[done]\nscanning complete, total objects: %d\n\n",
 			unyaffs2_image_objs);
 
 	UNYAFFS2_PRINT("building fs tree ... [*]");
 	if (unyaffs2_build_objtree() < 0) {
 		UNYAFFS2_ERROR("\nerror while building fs tree");
-		retval = -1;
 		goto exit_and_out;
 	}
-	unyaffs2_objtree.objs = unyaffs2_image_objs;
-	UNYAFFS2_PRINT("\b\b\b[done]\nbuilding complete, ");
-	UNYAFFS2_PRINT("total valid objects: %d\n", unyaffs2_objtree.objs);
+
+	UNYAFFS2_PRINT("\b\b\b[done]\n");
+	UNYAFFS2_PRINT("building complete, total objects: %d\n\n",
+			unyaffs2_objtree.objs);
 
 	/* stage 2: extracting image */
 	UNYAFFS2_PRINT("extracting image into '%s'\n", dirpath);
@@ -1415,13 +1499,11 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 
 	/* extract objs in the obj tree */
 	memset(unyaffs2_curfile, 0, sizeof(unyaffs2_curfile));
-	retval = unyaffs2_extract_objtree(NULL);
-
-	/* extract hardlinks in the obj tree */
-	retval |= unyaffs2_extract_hardlink(NULL);
+	retval = unyaffs2_extract_objtree(unyaffs2_objtree.root);
 
 	/* modify attr for objects in the objtree */
-	UNYAFFS2_PRINT("\nmodify files attributes... [*]");
+	UNYAFFS2_PRINT("%c\nmodify files attributes... [*]",
+			UNYAFFS2_ISVERBOSE ? '\0' : '\n');
 
 	if (!list_empty(&unyaffs2_specfile_list)) {
 		struct list_head *p;
@@ -1434,15 +1516,14 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 				unyaffs2_objtree_chattr(spec->obj);
 			}
 			else {
-				retval = -1;
-				UNYAFFS2_ERROR("File NOT found: '%s'\n",
-						spec->path);
+				UNYAFFS2_ERROR("specified file was NOT found: "
+					       "'%s'\n", spec->path);
 			}
 		}
 	}
 	else {
 		memset(unyaffs2_curfile, 0, sizeof(unyaffs2_curfile));
-		unyaffs2_objtree_chattr(NULL);
+		unyaffs2_objtree_chattr(unyaffs2_objtree.root);
 	}
 
 	if (!retval)
@@ -1465,22 +1546,23 @@ free_and_out:
 static int
 unyaffs2_helper (void)
 {
-	UNYAFFS2_HELP("Usage: ");
-	UNYAFFS2_HELP("unyaffs2 [-h] [-e] [-v] [-p pagesize] [-s sparesize] "
-		      "[-o file] [-f file] imgfile dirname\n");
-	UNYAFFS2_HELP("unyaffs2: A utility to extract the yaffs2 image\n");
-	UNYAFFS2_HELP("version: %s\n", YAFFS2UTILS_VERSION);
-	UNYAFFS2_HELP("options:\n");
-	UNYAFFS2_HELP("	-h	display this help message and exit.\n");
-	UNYAFFS2_HELP("	-e	convert endian differed from local machine.\n");
-	UNYAFFS2_HELP("	-v	verbose details instead of progress bar.\n");
-	UNYAFFS2_HELP("	-p size	page size of target device.\n"
-		      "		(512|2048|4096|(8192)|(16384) bytes, default: %u).\n",
-		      DEFAULT_CHUNKSIZE);
-	UNYAFFS2_HELP("	-s size	spare size of target device.\n"
-		      "		(default: pagesize/32 bytes; max: pagesize)\n");
-	UNYAFFS2_HELP("	-o file	load external oob image file.\n");;
-	UNYAFFS2_HELP("	-f file	extract the specified file.\n");;
+	UNYAFFS2_HELP("Usage: unyaffs2 [-h|--help] [-e|--endian] [-v|--verbose]\n"
+		      "                [-p|--pagesize pagesize] [-s|--sparesize sparesize]\n"
+		      "                [-o|--oobimg oobimage] [-f|--fileset file] [--raw-oobfree]\n"
+		      "                imgfile dirname\n\n");
+	UNYAFFS2_HELP("unyaffs2 - A utility to extract the yaffs2 image\n");
+	UNYAFFS2_HELP("Version : %s\n", YAFFS2UTILS_VERSION);
+	UNYAFFS2_HELP("Options :\n");
+	UNYAFFS2_HELP("  -h             display this help message and exit.\n");
+	UNYAFFS2_HELP("  -e             convert endian differed from local machine.\n");
+	UNYAFFS2_HELP("  -v             verbose details instead of progress bar.\n");
+	UNYAFFS2_HELP("  -p pagesize    page size of target device.\n"
+		      "                 (512|2048(default)|4096|(8192|16384) bytes)\n");
+	UNYAFFS2_HELP("  -s sparesize   spare size of target device.\n"
+		      "                 (default: pagesize/32 bytes; max: pagesize)\n");
+	UNYAFFS2_HELP("  -o oobimage    load external oob image file.\n");;
+	UNYAFFS2_HELP("  -f file        extract the specified file selection.\n");;
+	UNYAFFS2_HELP("  --raw-oobfree  use raw scheme in the oob free space.\n");
 
 	return -1;
 }
@@ -1499,20 +1581,12 @@ main (int argc, char* argv[])
 		{"pagesize",	required_argument, 	0, 'p'},
 		{"sparesize",	required_argument,	0, 's'},
 		{"oobimg",	required_argument, 	0, 'o'},
-		{"file",	required_argument, 	0, 'f'},
+		{"fileset",	required_argument, 	0, 'f'},
 		{"endian",	no_argument, 		0, 'e'},
 		{"verbose",	no_argument,	 	0, 'v'},
+		{"raw-oobfree",	no_argument,	 	0, 'r'},
 		{"help",	no_argument, 		0, 'h'},
 	};
-
-	UNYAFFS2_PRINT("unyaffs2-%s: image extracting tool for YAFFS2\n",
-		YAFFS2UTILS_VERSION);
-
-	if (getuid() != 0) {
-		unyaffs2_flags |= UNYAFFS2_FLAGS_NONROOT;
-		UNYAFFS2_WARN("warning: non-root users\n");
-		UNYAFFS2_WARN("suggest: executing this tool as root\n");
-	}
 
 	unyaffs2_chunksize = DEFAULT_CHUNKSIZE;
 
@@ -1532,9 +1606,8 @@ main (int argc, char* argv[])
 		case 'f':
 			retval = unyaffs2_specfile_insert(optarg);
 			if (retval) {
-				UNYAFFS2_ERROR("cannot specify the file '%s'",
-						optarg);
-				UNYAFFS2_ERROR("(invalid string ?)\n");
+				UNYAFFS2_ERROR("cannot specify the file '%s' "
+					       "(invalid string?)", optarg);
 				unyaffs2_specfile_exit();
 				return -1;
 			}
@@ -1544,6 +1617,9 @@ main (int argc, char* argv[])
 			break;
 		case 'v':
 			unyaffs2_flags |= UNYAFFS2_FLAGS_VERBOSE;
+			break;
+		case 'r':
+			unyaffs2_flags |= UNYAFFS2_FLAGS_RAWOOB;
 			break;
 		case 'h':
 		default:
@@ -1557,6 +1633,14 @@ main (int argc, char* argv[])
 	imgfile = argv[optind];
 	dirpath = argv[optind + 1];
 
+	UNYAFFS2_PRINT("unyaffs2-%s: image extracting tool for YAFFS2.\n",
+			YAFFS2UTILS_VERSION);
+
+	if (getuid() != 0) {
+		unyaffs2_flags |= UNYAFFS2_FLAGS_NONROOT;
+		UNYAFFS2_WARN("warning: non-root users.\n\n");
+	}
+
 	/* validate the page size */
 	switch (unyaffs2_chunksize) {
 	case 512:
@@ -1566,17 +1650,20 @@ main (int argc, char* argv[])
 		break;
 	case 2048:
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = &nand_oob_64;
+			unyaffs2_oobinfo = UNYAFFS2_ISRAWOOB ?
+					   &nand_oob_rawfree_64 : &nand_oob_64;
 		break;
 	case 4096:
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384. */
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = &nand_oob_128;
+			unyaffs2_oobinfo = UNYAFFS2_ISRAWOOB ?
+					   &nand_oob_rawfree_128 :
+					   &nand_oob_128;
 		break;
 	default:
-		UNYAFFS2_ERROR("%u bytes page size is not supported\n",
+		UNYAFFS2_ERROR("%u bytes page size is not supported.\n",
 				unyaffs2_chunksize);
 		return -1;
 	}
@@ -1586,14 +1673,14 @@ main (int argc, char* argv[])
 		unyaffs2_sparesize = unyaffs2_chunksize / 32;
 
 	if (unyaffs2_sparesize > unyaffs2_chunksize) {
-		UNYAFFS2_ERROR("spare size is too large (%u)\n",
+		UNYAFFS2_ERROR("spare size is too large (%u).\n",
 				unyaffs2_sparesize);
 		return -1;
 	}
 
 	if (oobfile) {
 		if (unyaffs2_load_spare(oobfile) < 0) {
-			UNYAFFS2_ERROR("parse oob image failed\n");
+			UNYAFFS2_ERROR("read oob image failed.\n");
 			return -1;
 		}
 		unyaffs2_oobinfo = &nand_oob_user;
@@ -1602,13 +1689,12 @@ main (int argc, char* argv[])
 
 	retval = unyaffs2_extract_image(imgfile, dirpath);
 	if (!retval) {
-		UNYAFFS2_PRINT("%coperation complete\n",
-				UNYAFFS2_ISVERBOSE ? '\n' : '\0');
-		UNYAFFS2_PRINT("files are extracted into '%s'\n", dirpath);
+		UNYAFFS2_PRINT("operation complete,\n"
+			       "files were extracted into '%s'.\n", dirpath);
 	}
 	else {
-		UNYAFFS2_ERROR("\noperation incomplete\n");
-		UNYAFFS2_ERROR("files contents may be broken\n");
+		UNYAFFS2_ERROR("operation incomplete,\n"
+			       "files contents may be broken!!!\n");
 	}
 
 	unyaffs2_specfile_exit();

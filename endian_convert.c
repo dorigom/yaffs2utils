@@ -19,12 +19,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "yaffs2utils_endian.h"
+#include "endian_convert.h"
 
 /*-------------------------------------------------------------------------*/
 
 void 
-oh_endian_transform (struct yaffs_obj_hdr *oh)
+oh_endian_convert (struct yaffs_obj_hdr *oh)
 {
 	oh->type = ENDIAN_SWAP_32(oh->type); // GCC makes enums 32 bits.
 	oh->parent_obj_id = ENDIAN_SWAP_32(oh->parent_obj_id); // int
@@ -65,7 +65,7 @@ oh_endian_transform (struct yaffs_obj_hdr *oh)
 	oh->inband_shadowed_obj_id = ENDIAN_SWAP_32(oh->inband_shadowed_obj_id);
 	oh->inband_is_shrink = ENDIAN_SWAP_32(oh->inband_is_shrink);
 	oh->file_size_high = ENDIAN_SWAP_32(oh->file_size_high);
-	oh->reserved[1] = ENDIAN_SWAP_32(oh->reserved[1]);
+	oh->reserved[0] = ENDIAN_SWAP_32(oh->reserved[0]);
 	oh->shadows_obj = ENDIAN_SWAP_32(oh->shadows_obj);
 	oh->is_shrink = ENDIAN_SWAP_32(oh->is_shrink);
 }
@@ -73,7 +73,7 @@ oh_endian_transform (struct yaffs_obj_hdr *oh)
 /*-------------------------------------------------------------------------*/
 
 void
-packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse)
+packedtags1_endian_convert (struct yaffs_packed_tags1 *pt, unsigned reverse)
 {
 	union yaffs_tags_union *tags = (union yaffs_tags_union *)pt;
 	union yaffs_tags_union temp;
@@ -180,7 +180,7 @@ packedtags1_endian_transform (struct yaffs_packed_tags1 *pt, unsigned reverse)
 /*-------------------------------------------------------------------------*/
 
 void
-packedtags2_tagspart_endian_transform (struct yaffs_packed_tags2 *t)
+packedtags2_tagspart_endian_convert (struct yaffs_packed_tags2 *t)
 {
 	struct yaffs_packed_tags2_tags_only *tp = &t->t;
 
@@ -191,7 +191,7 @@ packedtags2_tagspart_endian_transform (struct yaffs_packed_tags2 *t)
 }
 
 void 
-packedtags2_eccother_endian_transform (struct yaffs_packed_tags2 *t)
+packedtags2_eccother_endian_convert (struct yaffs_packed_tags2 *t)
 {
 	struct yaffs_ecc_other *e = &t->ecc;
 
