@@ -18,11 +18,13 @@ Version 0.2.9
 	- Code level optimization.
 
 	* unyaffs2:
+	- Close #29: Ignore OOB area (won't fix).
 	- Add a new opetion "--yaffs-ecclayout" to extract an image made by the
 	  native official mkyaffs2image tool.
 	- Code level optimization.
 
 	* others:
+	- Close #31: Doesn't compile properly on Mac OSX (won't fix).
 	- Update README.
 	- Change developing environment to Debian 6 (code squeeze).
 	- Merge the latest YAFFS2 to 20120619 from the official repository.
