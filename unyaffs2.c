@@ -61,13 +61,13 @@
 #define UNYAFFS2_FLAGS_SHOWBAR	(1 << 1)
 #define UNYAFFS2_FLAGS_YAFFS1	(1 << 16)
 #define UNYAFFS2_FLAGS_ENDIAN	(1 << 17)
-#define UNYAFFS2_FLAGS_RAWOOB	(1 << 18)
+#define UNYAFFS2_FLAGS_YAFFSECC	(1 << 18)
 #define UNYAFFS2_FLAGS_VERBOSE	(1 << 19)
 
 #define UNYAFFS2_ISSHOWBAR	(unyaffs2_flags & UNYAFFS2_FLAGS_SHOWBAR)
 #define UNYAFFS2_ISYAFFS1	(unyaffs2_flags & UNYAFFS2_FLAGS_YAFFS1)
 #define UNYAFFS2_ISENDIAN	(unyaffs2_flags & UNYAFFS2_FLAGS_ENDIAN)
-#define UNYAFFS2_ISRAWOOB	(unyaffs2_flags & UNYAFFS2_FLAGS_RAWOOB)
+#define UNYAFFS2_ISYAFFSECC	(unyaffs2_flags & UNYAFFS2_FLAGS_YAFFSECC)
 #define UNYAFFS2_ISVERBOSE	(unyaffs2_flags & UNYAFFS2_FLAGS_VERBOSE)
 
 #define UNYAFFS2_PRINT(s, args...) \
@@ -1548,21 +1548,21 @@ unyaffs2_helper (void)
 {
 	UNYAFFS2_HELP("Usage: unyaffs2 [-h|--help] [-e|--endian] [-v|--verbose]\n"
 		      "                [-p|--pagesize pagesize] [-s|--sparesize sparesize]\n"
-		      "                [-o|--oobimg oobimage] [-f|--fileset file] [--raw-oobfree]\n"
+		      "                [-o|--oobimg oobimage] [-f|--fileset file] [--yaffs-ecclayout]\n"
 		      "                imgfile dirname\n\n");
 	UNYAFFS2_HELP("unyaffs2 - A utility to extract the yaffs2 image\n");
 	UNYAFFS2_HELP("Version : %s\n", YAFFS2UTILS_VERSION);
 	UNYAFFS2_HELP("Options :\n");
-	UNYAFFS2_HELP("  -h             display this help message and exit.\n");
-	UNYAFFS2_HELP("  -e             convert endian differed from local machine.\n");
-	UNYAFFS2_HELP("  -v             verbose details instead of progress bar.\n");
-	UNYAFFS2_HELP("  -p pagesize    page size of target device.\n"
-		      "                 (512|2048(default)|4096|(8192|16384) bytes)\n");
-	UNYAFFS2_HELP("  -s sparesize   spare size of target device.\n"
-		      "                 (default: pagesize/32 bytes; max: pagesize)\n");
-	UNYAFFS2_HELP("  -o oobimage    load external oob image file.\n");;
-	UNYAFFS2_HELP("  -f file        extract the specified file selection.\n");;
-	UNYAFFS2_HELP("  --raw-oobfree  use raw scheme in the oob free space.\n");
+	UNYAFFS2_HELP("  -h                 display this help message and exit.\n");
+	UNYAFFS2_HELP("  -e                 convert endian differed from local machine.\n");
+	UNYAFFS2_HELP("  -v                 verbose details instead of progress bar.\n");
+	UNYAFFS2_HELP("  -p pagesize        page size of target device.\n"
+		      "                     (512|2048(default)|4096|(8192|16384) bytes)\n");
+	UNYAFFS2_HELP("  -s sparesize       spare size of target device.\n"
+		      "                     (default: pagesize/32 bytes; max: pagesize)\n");
+	UNYAFFS2_HELP("  -o oobimage        load external oob image file.\n");;
+	UNYAFFS2_HELP("  -f file            extract the specified file selection.\n");;
+	UNYAFFS2_HELP("  --yaffs-ecclayout  use yaffs oob scheme instead of the Linux MTD default.\n");
 
 	return -1;
 }
@@ -1578,14 +1578,14 @@ main (int argc, char* argv[])
 	int option, option_index;
 	static const char *short_options = "hvep:s:o:f:";
 	static const struct option long_options[] = {
-		{"pagesize",	required_argument, 	0, 'p'},
-		{"sparesize",	required_argument,	0, 's'},
-		{"oobimg",	required_argument, 	0, 'o'},
-		{"fileset",	required_argument, 	0, 'f'},
-		{"endian",	no_argument, 		0, 'e'},
-		{"verbose",	no_argument,	 	0, 'v'},
-		{"raw-oobfree",	no_argument,	 	0, 'r'},
-		{"help",	no_argument, 		0, 'h'},
+		{"pagesize",		required_argument, 	0, 'p'},
+		{"sparesize",		required_argument,	0, 's'},
+		{"oobimg",		required_argument, 	0, 'o'},
+		{"fileset",		required_argument, 	0, 'f'},
+		{"endian",		no_argument, 		0, 'e'},
+		{"verbose",		no_argument,	 	0, 'v'},
+		{"yaffs-ecclayout",	no_argument,	 	0, 'y'},
+		{"help",		no_argument, 		0, 'h'},
 	};
 
 	unyaffs2_chunksize = DEFAULT_CHUNKSIZE;
@@ -1618,8 +1618,8 @@ main (int argc, char* argv[])
 		case 'v':
 			unyaffs2_flags |= UNYAFFS2_FLAGS_VERBOSE;
 			break;
-		case 'r':
-			unyaffs2_flags |= UNYAFFS2_FLAGS_RAWOOB;
+		case 'y':
+			unyaffs2_flags |= UNYAFFS2_FLAGS_YAFFSECC;
 			break;
 		case 'h':
 		default:
@@ -1650,17 +1650,16 @@ main (int argc, char* argv[])
 		break;
 	case 2048:
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = UNYAFFS2_ISRAWOOB ?
-					   &nand_oob_rawfree_64 : &nand_oob_64;
+			unyaffs2_oobinfo = UNYAFFS2_ISYAFFSECC ?
+					   &yaffs_nand_oob_64 : &nand_oob_64;
 		break;
 	case 4096:
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384. */
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = UNYAFFS2_ISRAWOOB ?
-					   &nand_oob_rawfree_128 :
-					   &nand_oob_128;
+			unyaffs2_oobinfo = UNYAFFS2_ISYAFFSECC ?
+					   &yaffs_nand_oob_128 : &nand_oob_128;
 		break;
 	default:
 		UNYAFFS2_ERROR("%u bytes page size is not supported.\n",

@@ -39,7 +39,7 @@ static nand_ecclayout_t nand_oob_64 = {
 	.oobfree	= {{.offset = 2, .length = 38}},
 };
 
-static nand_ecclayout_t nand_oob_rawfree_64 = {
+static nand_ecclayout_t yaffs_nand_oob_64 = {
 	.eccbytes	= 24,
 	.eccpos		= {40, 41, 42, 43, 44, 45, 46, 47,
 			   48, 49, 50, 51, 52, 53, 54, 55,
@@ -59,7 +59,7 @@ static nand_ecclayout_t nand_oob_128 = {
 	.oobfree	= {{.offset = 2, .length = 78}}
 };
 
-static nand_ecclayout_t nand_oob_rawfree_128 = {
+static nand_ecclayout_t yaffs_nand_oob_128 = {
 	.eccbytes	= 48,
 	.eccpos		= {
 			   80, 81, 82, 83, 84, 85, 86, 87,

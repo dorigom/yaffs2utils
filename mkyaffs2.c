@@ -55,14 +55,14 @@
 #define MKYAFFS2_FLAGS_SHOWBAR	(1 << 1)
 #define MKYAFFS2_FLAGS_YAFFS1	(1 << 16)
 #define MKYAFFS2_FLAGS_ENDIAN	(1 << 17)
-#define MKYAFFS2_FLAGS_RAWOOB	(1 << 18)
+#define MKYAFFS2_FLAGS_YAFFSECC	(1 << 18)
 #define MKYAFFS2_FLAGS_ALLROOT	(1 << 19)
 #define MKYAFFS2_FLAGS_VERBOSE	(1 << 20)
 
 #define MKYAFFS2_ISSHOWBAR	(mkyaffs2_flags & MKYAFFS2_FLAGS_SHOWBAR)
 #define MKYAFFS2_ISYAFFS1	(mkyaffs2_flags & MKYAFFS2_FLAGS_YAFFS1)
 #define MKYAFFS2_ISENDIAN	(mkyaffs2_flags & MKYAFFS2_FLAGS_ENDIAN)
-#define MKYAFFS2_ISRAWOOB	(mkyaffs2_flags & MKYAFFS2_FLAGS_RAWOOB)
+#define MKYAFFS2_ISYAFFSECC	(mkyaffs2_flags & MKYAFFS2_FLAGS_YAFFSECC)
 #define MKYAFFS2_ISALLROOT	(mkyaffs2_flags & MKYAFFS2_FLAGS_ALLROOT)
 #define MKYAFFS2_ISVERBOSE	(mkyaffs2_flags & MKYAFFS2_FLAGS_VERBOSE)
 
@@ -925,21 +925,21 @@ mkyaffs2_helper (void)
 {
 	MKYAFFS2_HELP("Usage: mkyaffs2 [-h|--help] [-e|--endian] [-v|--verbose]\n"
 		      "                [-p|--pagesize pagesize] [-s|sparesize sparesize]\n"
-		      "                [-o|--oobimg oobimage] [--all-root] [--raw-oobfree]\n"
+		      "                [-o|--oobimg oobimage] [--all-root] [--yaffs-ecclayout]\n"
 		      "                dirname imgfile\n");
 	MKYAFFS2_HELP("mkyaffs2 - A utility to make the yaffs2 image\n");
 	MKYAFFS2_HELP("Version: %s\n", YAFFS2UTILS_VERSION);
 	MKYAFFS2_HELP("Options:\n");
-	MKYAFFS2_HELP("  -h             display this help message and exit.\n");
-	MKYAFFS2_HELP("  -e             convert endian differed from local machine.\n");
-	MKYAFFS2_HELP("  -v             verbose details instead of progress bar.\n");
-	MKYAFFS2_HELP("  -p pagesize    page size of target device.\n"
-		      "                 (512|2048(default)|4096|(8192|16384) bytes)\n");
-	MKYAFFS2_HELP("  -s sparesize   spare size of target device.\n"
-		      "                 (default: pagesize/32 bytes; max: pagesize)\n");
-	MKYAFFS2_HELP("  -o oobimage    load external oob image file.\n");
-	MKYAFFS2_HELP("  --all-root     All files in the target system are owned by root.\n");
-	MKYAFFS2_HELP("  --raw-oobfree  use raw scheme in the oob free space.\n");
+	MKYAFFS2_HELP("  -h                 display this help message and exit.\n");
+	MKYAFFS2_HELP("  -e                 convert endian differed from local machine.\n");
+	MKYAFFS2_HELP("  -v                 verbose details instead of progress bar.\n");
+	MKYAFFS2_HELP("  -p pagesize        page size of target device.\n"
+		      "                     (512|2048(default)|4096|(8192|16384) bytes)\n");
+	MKYAFFS2_HELP("  -s sparesize       spare size of target device.\n"
+		      "                     (default: pagesize/32 bytes; max: pagesize)\n");
+	MKYAFFS2_HELP("  -o oobimage        load external oob image file.\n");
+	MKYAFFS2_HELP("  --all-root         all files in the target system are owned by root.\n");
+	MKYAFFS2_HELP("  --yaffs-ecclayout  use yaffs oob scheme instead of the Linux MTD default.\n");
 
 	return -1;
 }
@@ -955,14 +955,14 @@ main (int argc, char *argv[])
 	int option, option_index;
 	static const char *short_options = "hvep:s:o:";
 	static const struct option long_options[] = {
-		{"pagesize", 	required_argument, 	0, 'p'},
-		{"sparesize", 	required_argument, 	0, 's'},
-		{"oobimg",	required_argument,	0, 'o'},
-		{"endian", 	no_argument, 		0, 'e'},
-		{"verbose", 	no_argument, 		0, 'v'},
-		{"raw-oobfree",	no_argument,		0, 'r'},
-		{"all-root",	no_argument,		0, '0'},
-		{"help", 	no_argument, 		0, 'h'},
+		{"pagesize", 		required_argument, 	0, 'p'},
+		{"sparesize", 		required_argument, 	0, 's'},
+		{"oobimg",		required_argument,	0, 'o'},
+		{"endian", 		no_argument, 		0, 'e'},
+		{"verbose", 		no_argument, 		0, 'v'},
+		{"all-root",		no_argument,		0, '0'},
+		{"yaffs-ecclayout",	no_argument,		0, 'y'},
+		{"help", 		no_argument, 		0, 'h'},
 	};
 
 	mkyaffs2_chunksize = DEFAULT_CHUNKSIZE;
@@ -985,8 +985,8 @@ main (int argc, char *argv[])
 		case 'v':
 			mkyaffs2_flags |= MKYAFFS2_FLAGS_VERBOSE;
 			break;
-		case 'r':
-			mkyaffs2_flags |= MKYAFFS2_FLAGS_RAWOOB;
+		case 'y':
+			mkyaffs2_flags |= MKYAFFS2_FLAGS_YAFFSECC;
 			break;
 		case '0':
 			mkyaffs2_flags |= MKYAFFS2_FLAGS_ALLROOT;
@@ -1022,17 +1022,16 @@ main (int argc, char *argv[])
 		break;
 	case 2048:
 		if (oobfile == NULL)
-			mkyaffs2_oobinfo = MKYAFFS2_ISRAWOOB ?
-					   &nand_oob_rawfree_64 : &nand_oob_64;
+			mkyaffs2_oobinfo = MKYAFFS2_ISYAFFSECC ?
+					   &yaffs_nand_oob_64 : &nand_oob_64;
 		break;
 	case 4096:
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384 bytes */
 		if (oobfile == NULL)
-			mkyaffs2_oobinfo = MKYAFFS2_ISRAWOOB ?
-					   &nand_oob_rawfree_128 :
-					   &nand_oob_128;
+			mkyaffs2_oobinfo = MKYAFFS2_ISYAFFSECC ?
+					   &yaffs_nand_oob_128 : &nand_oob_128;
 		break;
 	default:
 		MKYAFFS2_ERROR("%u bytes page size is NOT supported.\n",
