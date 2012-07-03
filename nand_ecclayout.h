@@ -20,9 +20,9 @@
 #define __YAFFS2UTILS_NAND_ECCLAYOUT_H__
 
 #ifndef _HAVE_BROKEN_MTD_H
- #include <mtd/mtd-user.h>
+#include <mtd/mtd-user.h>
 #else
- #include <mtd-abi.h>
+#include "mtd-abi.h"
 #endif
 
 static nand_ecclayout_t nand_oob_16 = {

@@ -29,6 +29,9 @@
 #if defined(__APPLE__) && defined(__MACH__)
  #define _HAVE_OSX_SYSLIMITS	1
  #define _HAVE_BROKEN_LOFF_T	1
+#endif
+
+#if !defined(__linux__)
  #define _HAVE_BROKEN_MTD_H	1
 #endif
 

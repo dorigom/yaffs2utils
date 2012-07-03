@@ -29,7 +29,11 @@
 #include <string.h>
 #include <getopt.h>
 #include <sys/ioctl.h>
+#ifndef _HAVE_BROKEN_MTD_H
 #include <mtd/mtd-user.h>
+#else
+#include "mtd-abi.h"
+#endif
 
 #include "safe_rw.h"
 #include "endian_convert.h"
