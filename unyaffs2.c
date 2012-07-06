@@ -152,7 +152,7 @@ typedef struct unyaffs2_obj {
 	unsigned parent_id;
 	struct unyaffs2_obj *parent_obj;
 
-	enum yaffs_obj_type type;	/* file type */
+	unsigned type;			/* file type */
 	union unyaffs2_file_variant variant;
 
 	unsigned mode;			/* file mode */
