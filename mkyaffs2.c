@@ -923,12 +923,11 @@ exit_and_out:
 static int
 mkyaffs2_helper (void)
 {
+	MKYAFFS2_HELP("mkyaffs2 %s - A utility to make the yaffs2 image\n\n", YAFFS2UTILS_VERSION);
 	MKYAFFS2_HELP("Usage: mkyaffs2 [-h|--help] [-e|--endian] [-v|--verbose]\n"
 		      "                [-p|--pagesize pagesize] [-s|sparesize sparesize]\n"
 		      "                [-o|--oobimg oobimage] [--all-root] [--yaffs-ecclayout]\n"
-		      "                dirname imgfile\n");
-	MKYAFFS2_HELP("mkyaffs2 - A utility to make the yaffs2 image\n");
-	MKYAFFS2_HELP("Version: %s\n", YAFFS2UTILS_VERSION);
+		      "                dirname imgfile\n\n");
 	MKYAFFS2_HELP("Options:\n");
 	MKYAFFS2_HELP("  -h                 display this help message and exit.\n");
 	MKYAFFS2_HELP("  -e                 convert endian differed from local machine.\n");
@@ -1003,7 +1002,7 @@ main (int argc, char *argv[])
 	dirpath = argv[optind];
 	imgfile = argv[optind + 1];
 
-	MKYAFFS2_PRINT("mkyaffs2-%s: image building tool for YAFFS2.\n",
+	MKYAFFS2_PRINT("mkyaffs2 %s: image building tool for YAFFS2.\n",
 			YAFFS2UTILS_VERSION);
 
 	if (getuid() != 0) {

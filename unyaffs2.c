@@ -1546,12 +1546,11 @@ free_and_out:
 static int
 unyaffs2_helper (void)
 {
+	UNYAFFS2_HELP("unyaffs2 %s - A utility to extract the yaffs2 image\n\n", YAFFS2UTILS_VERSION);
 	UNYAFFS2_HELP("Usage: unyaffs2 [-h|--help] [-e|--endian] [-v|--verbose]\n"
 		      "                [-p|--pagesize pagesize] [-s|--sparesize sparesize]\n"
 		      "                [-o|--oobimg oobimage] [-f|--fileset file] [--yaffs-ecclayout]\n"
 		      "                imgfile dirname\n\n");
-	UNYAFFS2_HELP("unyaffs2 - A utility to extract the yaffs2 image\n");
-	UNYAFFS2_HELP("Version : %s\n", YAFFS2UTILS_VERSION);
 	UNYAFFS2_HELP("Options :\n");
 	UNYAFFS2_HELP("  -h                 display this help message and exit.\n");
 	UNYAFFS2_HELP("  -e                 convert endian differed from local machine.\n");
@@ -1633,7 +1632,7 @@ main (int argc, char* argv[])
 	imgfile = argv[optind];
 	dirpath = argv[optind + 1];
 
-	UNYAFFS2_PRINT("unyaffs2-%s: image extracting tool for YAFFS2.\n",
+	UNYAFFS2_PRINT("unyaffs2 %s: image extracting tool for YAFFS2.\n",
 			YAFFS2UTILS_VERSION);
 
 	if (getuid() != 0) {
