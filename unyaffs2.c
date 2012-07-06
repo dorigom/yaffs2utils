@@ -1424,11 +1424,9 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 
 	if ((statbuf.st_size % (unyaffs2_chunksize + unyaffs2_sparesize)) != 0)
 	{
-		UNYAFFS2_ERROR("image size (%lu) is NOT a mutiple of %u + %u,\n"
-			       "try specifying the page and spare size\n",
-				statbuf.st_size, unyaffs2_chunksize,
-				unyaffs2_sparesize);
-		return -1;
+		UNYAFFS2_WARN("image size (%lu) is NOT a mutiple of %u + %u\n",
+			      statbuf.st_size, unyaffs2_chunksize,
+			      unyaffs2_sparesize);
 	}
 
 	unyaffs2_image_fd = open(imgfile, O_RDONLY);
