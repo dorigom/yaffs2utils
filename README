@@ -7,7 +7,7 @@ The yaffs2utils is the collection of utilities to make/extract a YAFFS2/YAFFS1
 image for Linux.
 
 Currently, it inclueds the following tools:
-(1) mkyaffs2: making a yaffs2 (yaffs1) image 
+(1) mkyaffs2: making a yaffs2 (yaffs1) image.
 (2) unyaffs2: extract a yaffs2 (yaffs1) image made by mkyaffs2.
 (3) unspare2: extract the spare(oob) layout from the NAND device.
 
