@@ -23,6 +23,8 @@
  * Luen-Yung Lin <penguin.lin@gmail.com>
  */
 
+#include "configs.h"
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
