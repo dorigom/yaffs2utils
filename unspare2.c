@@ -48,24 +48,30 @@
 
 #define UNSPARE2_ISENDIAN       (unspare2_flags & UNSPARE2_FLAGS_ENDIAN)
 
-#define UNSPARE2_PRINT(s, args...) \
+#define UNSPARE2_PRINTF(s, args...) \
 		do { \
 			fprintf(stdout, s, ##args); \
 			fflush(stdout); \
 		} while (0)
 
-#define UNSPARE2_ERROR(s, args...) \
+#define UNSPARE2_ERROR_PRINTF(s, args...) \
 		do { \
 			fprintf(stderr, s, ##args); \
 			fflush(stderr); \
 		} while (0)
 
-#define UNSPARE2_HELP(s, args...)	UNSPARE2_PRINT(s, ##args)
-#define UNSPARE2_WARN(s, args...)	UNSPARE2_ERROR(s, ##args)
+#define UNSPARE2_HELP(s, args...) \
+		UNSPARE2_PRINTF(s, ##args)
+
+#define UNSPARE2_WARN(s, args...) \
+		UNSPARE2_ERROR_PRINTF("warning: " s, ##args)
+
+#define UNSPARE2_ERROR(s, args...) \
+		UNSPARE2_ERROR_PRINTF("error: " s, ##args)
 
 #ifdef _UNSPARE2_DEBUG
-#define UNSPARE2_DEBUG(s, args...)	UNSPARE2_ERROR("%s: " s, \
-						       __FUNCTION__, ##args)
+#define UNSPARE2_DEBUG(s, args...) \
+	UNSPARE2_ERROR_PRINTF("%s: " s, __FUNCTION__, ##args)
 #else
 #define UNSPARE2_DEBUG(s, args...)
 #endif
@@ -195,7 +201,7 @@ main (int argc, char **argv)
 	devpath = argv[optind];
 	imgpath = argv[optind + 1];
 
-	UNSPARE2_PRINT("unspare2 %s: OOB extracting tool for yaffs2utils\n",
+	UNSPARE2_PRINTF("unspare2 %s: OOB extracting tool for yaffs2utils\n",
 			YAFFS2UTILS_VERSION);
 
 	if (getuid() != 0)
@@ -203,8 +209,9 @@ main (int argc, char **argv)
 
 	retval = unspare2_dump(devpath, imgpath);
 
+	UNSPARE2_PRINTF("\n");
 	if (!retval)
-		printf("OOB info for %s was saved in %s\n", devpath, imgpath);
+		UNSPARE2_PRINTF("OOB info for %s was saved in %s\n", devpath, imgpath);
 	else
 		UNSPARE2_ERROR("failed");
 
