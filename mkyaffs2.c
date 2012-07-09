@@ -66,13 +66,13 @@
 #define MKYAFFS2_ISALLROOT	(mkyaffs2_flags & MKYAFFS2_FLAGS_ALLROOT)
 #define MKYAFFS2_ISVERBOSE	(mkyaffs2_flags & MKYAFFS2_FLAGS_VERBOSE)
 
-#define MKYAFFS2_PRINT(s, args...) \
+#define MKYAFFS2_PRINTF(s, args...) \
 		do { \
 			fprintf(stdout, s, ##args); \
 			fflush(stdout); \
 		} while (0)
 
-#define MKYAFFS2_ERROR(s, args...) \
+#define MKYAFFS2_ERROR_PRINTF(s, args...) \
 		do { \
 			if (!MKYAFFS2_ISVERBOSE && MKYAFFS2_ISSHOWBAR) { \
 				mkyaffs2_flags &= ~MKYAFFS2_FLAGS_SHOWBAR; \
@@ -82,12 +82,18 @@
 			fflush(stderr); \
 		} while (0)
 
-#define MKYAFFS2_HELP(s, args...)	MKYAFFS2_PRINT(s, ##args)
-#define MKYAFFS2_WARN(s, args...)	MKYAFFS2_ERROR(s, ##args)
+#define MKYAFFS2_HELP(s, args...) \
+		MKYAFFS2_PRINTF(s, ##args)
+
+#define MKYAFFS2_WARN(s, args...) \
+		MKYAFFS2_ERROR_PRINTF("warning: " s, ##args)
+
+#define MKYAFFS2_ERROR(s, args...) \
+		MKYAFFS2_ERROR_PRINTF("error: " s, ##args)
 
 #ifdef _MKYAFFS2_DEBUG
-#define MKYAFFS2_DEBUG(s, args...)	MKYAFFS2_ERROR("%s: " s, \
-						       __FUNCTION__, ##args)
+#define MKYAFFS2_DEBUG(s, args...) \
+		MKYAFFS2_ERROR_PRINTF("%s: " s, __FUNCTION__, ##args)
 #else
 #define MKYAFFS2_DEBUG(s, args...)
 #endif
@@ -95,7 +101,7 @@
 #define MKYAFFS2_VERBOSE(s, args...) \
 		do { \
 			if (MKYAFFS2_ISVERBOSE) \
-				MKYAFFS2_PRINT(s, ##args); \
+				MKYAFFS2_PRINTF(s, ##args); \
 		} while (0)
 
 #define MKYAFFS2_PROGRESS_INIT() \
@@ -552,7 +558,7 @@ mkyaffs2_scan_dir_status (unsigned status)
 		break;
 	}
 
-	MKYAFFS2_PRINT("\b\b\b[%c]", st);
+	MKYAFFS2_PRINTF("\b\b\b[%c]", st);
 	fflush(stdout);
 }
 
@@ -658,7 +664,6 @@ mkyaffs2_write_obj (const char *fpath, struct mkyaffs2_obj *obj)
 
 		r = readlink((char *)fpath, oh.alias, sizeof(oh.alias));
 		if (r < 0) {
-			MKYAFFS2_ERROR("%s to %s\n", fpath, oh.alias);
 			MKYAFFS2_ERROR("read symbol link failed: %s\n",
 					strerror(errno));
 			return -1;
@@ -889,18 +894,20 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 
 	/* stage 1: scanning direcotry */
 	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
-	MKYAFFS2_PRINT("stage 1: scanning directory '%s'... [*]",
+	MKYAFFS2_PRINTF("\n");
+	MKYAFFS2_PRINTF("stage 1: scanning directory '%s'... [*]",
 			mkyaffs2_curfile);
 
 	retval = mkyaffs2_scan_dir(mkyaffs2_objtree.root);
 	if (retval < 0)
 		goto free_and_out;
 
-	MKYAFFS2_PRINT("\b\b\b[done]\nscanning complete, total %u objects.\n\n",
+	MKYAFFS2_PRINTF("\b\b\b[done]\nscanning complete, total %u objects.\n",
 			mkyaffs2_objtree.objs);
 
 	/* stage 2: making a image */
-	MKYAFFS2_PRINT("stage 2: creating image '%s'\n", imgfile);
+	MKYAFFS2_PRINTF("\n");
+	MKYAFFS2_PRINTF("stage 2: creating image '%s'\n", imgfile);
 
 	MKYAFFS2_PROGRESS_INIT();
 
@@ -1002,12 +1009,12 @@ main (int argc, char *argv[])
 	dirpath = argv[optind];
 	imgfile = argv[optind + 1];
 
-	MKYAFFS2_PRINT("mkyaffs2 %s: image building tool for YAFFS2.\n",
+	MKYAFFS2_PRINTF("mkyaffs2 %s: image building tool for YAFFS2.\n",
 			YAFFS2UTILS_VERSION);
 
 	if (getuid() != 0) {
 		mkyaffs2_flags |= MKYAFFS2_FLAGS_NONROOT;
-		MKYAFFS2_WARN("warning: non-root users.\n\n");
+		MKYAFFS2_WARN("non-root users.\n");
 	}
 
 	/* veridate the page size */
@@ -1068,8 +1075,8 @@ main (int argc, char *argv[])
 
 	retval = mkyaffs2_create_image(dirpath, imgfile);
 	if (!retval) {
-		MKYAFFS2_PRINT("%c\noperation complete,\n"
-			       "%u objects in %u NAND pages.\n",
+		MKYAFFS2_PRINTF("%c\noperation complete,\n"
+				"%u objects in %u NAND pages.\n",
 				MKYAFFS2_ISVERBOSE ? '\0' : '\n',
 				mkyaffs2_image_objs, mkyaffs2_image_pages);
 	}
