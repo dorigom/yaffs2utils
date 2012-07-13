@@ -72,6 +72,10 @@
 
 #define UNYAFFS2_PRINTF(s, args...) \
 		do { \
+			if (!UNYAFFS2_ISVERBOSE && UNYAFFS2_ISSHOWBAR) { \
+				unyaffs2_flags &= ~UNYAFFS2_FLAGS_SHOWBAR; \
+				fprintf(stderr, "\n"); \
+			} \
 			fprintf(stdout, s, ##args); \
 			fflush(stdout); \
 		} while (0)
@@ -90,10 +94,10 @@
 		UNYAFFS2_PRINTF(s, ##args)
 
 #define UNYAFFS2_WARN(s, args...) \
-		UNYAFFS2_ERROR_PRINTF("warning: " s, ##args)
+		UNYAFFS2_ERROR_PRINTF(s, ##args)
 
 #define UNYAFFS2_ERROR(s, args...) \
-		UNYAFFS2_ERROR_PRINTF("error: " s, ##args)
+		UNYAFFS2_ERROR_PRINTF(s, ##args)
 
 #ifdef _UNYAFFS2_DEBUG
 #define UNYAFFS2_DEBUG(s, args...) \
@@ -1435,7 +1439,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	}
 
 	if ((statbuf.st_size % (unyaffs2_chunksize + unyaffs2_sparesize)) != 0)
-		UNYAFFS2_WARN("image size (%lu)"
+		UNYAFFS2_WARN("warning: image size (%lu)"
 			      "is NOT a multiple of (%u + %u).\n",
 			      statbuf.st_size, unyaffs2_chunksize,
 			      unyaffs2_sparesize);
@@ -1507,9 +1511,7 @@ unyaffs2_extract_image (const char *imgfile, const char *dirpath)
 	retval = unyaffs2_extract_objtree(unyaffs2_objtree.root);
 
 	/* modify attr for objects in the objtree */
-	UNYAFFS2_PRINTF("\n");
-	UNYAFFS2_PRINTF("%cmodify files attributes... [*]",
-			UNYAFFS2_ISVERBOSE ? '\0' : '\n');
+	UNYAFFS2_PRINTF("\nmodify files attributes... [*]");
 
 	if (!list_empty(&unyaffs2_specfile_list)) {
 		struct list_head *p;
@@ -1643,7 +1645,7 @@ main (int argc, char* argv[])
 
 	if (getuid() != 0) {
 		unyaffs2_flags |= UNYAFFS2_FLAGS_NONROOT;
-		UNYAFFS2_WARN("non-root users.\n");
+		UNYAFFS2_WARN("warning: non-root users.\n");
 	}
 
 	/* validate the page size */
@@ -1693,11 +1695,11 @@ main (int argc, char* argv[])
 
 	retval = unyaffs2_extract_image(imgfile, dirpath);
 	if (!retval) {
-		UNYAFFS2_PRINTF("operation complete,\n"
+		UNYAFFS2_PRINTF("\noperation complete,\n"
 				"files were extracted into '%s'.\n", dirpath);
 	}
 	else {
-		UNYAFFS2_ERROR("operation incomplete,\n"
+		UNYAFFS2_ERROR("\n\noperation incomplete,\n"
 			       "files contents may be broken!!!\n");
 	}
 

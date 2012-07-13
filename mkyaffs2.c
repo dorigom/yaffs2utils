@@ -68,6 +68,10 @@
 
 #define MKYAFFS2_PRINTF(s, args...) \
 		do { \
+			if (!MKYAFFS2_ISVERBOSE && MKYAFFS2_ISSHOWBAR) { \
+				mkyaffs2_flags &= ~MKYAFFS2_FLAGS_SHOWBAR; \
+				fprintf(stdout, "\n"); \
+			} \
 			fprintf(stdout, s, ##args); \
 			fflush(stdout); \
 		} while (0)
@@ -86,10 +90,10 @@
 		MKYAFFS2_PRINTF(s, ##args)
 
 #define MKYAFFS2_WARN(s, args...) \
-		MKYAFFS2_ERROR_PRINTF("warning: " s, ##args)
+		MKYAFFS2_ERROR_PRINTF(s, ##args)
 
 #define MKYAFFS2_ERROR(s, args...) \
-		MKYAFFS2_ERROR_PRINTF("error: " s, ##args)
+		MKYAFFS2_ERROR_PRINTF(s, ##args)
 
 #ifdef _MKYAFFS2_DEBUG
 #define MKYAFFS2_DEBUG(s, args...) \
@@ -721,7 +725,7 @@ write_obj:
 	obj->obj_id = ++mkyaffs2_image_obj_id;
 
 	if (obj->obj_id > YAFFS_MAX_OBJECT_ID)
-		MKYAFFS2_WARN("too many files\n");
+		MKYAFFS2_WARN("warning: too many files\n");
 
 	retval = mkyaffs2_write_oh(&oh, obj);
 
@@ -902,7 +906,7 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 	if (retval < 0)
 		goto free_and_out;
 
-	MKYAFFS2_PRINTF("\b\b\b[done]\nscanning complete, total %u objects.\n",
+	MKYAFFS2_PRINTF("\b\b\b[done]\nscanning complete, total objects: %u.\n",
 			mkyaffs2_objtree.objs);
 
 	/* stage 2: making a image */
@@ -1014,7 +1018,7 @@ main (int argc, char *argv[])
 
 	if (getuid() != 0) {
 		mkyaffs2_flags |= MKYAFFS2_FLAGS_NONROOT;
-		MKYAFFS2_WARN("non-root users.\n");
+		MKYAFFS2_WARN("warning: non-root users.\n");
 	}
 
 	/* veridate the page size */
@@ -1075,13 +1079,12 @@ main (int argc, char *argv[])
 
 	retval = mkyaffs2_create_image(dirpath, imgfile);
 	if (!retval) {
-		MKYAFFS2_PRINTF("%c\noperation complete,\n"
+		MKYAFFS2_PRINTF("\noperation complete,\n"
 				"%u objects in %u NAND pages.\n",
-				MKYAFFS2_ISVERBOSE ? '\0' : '\n',
 				mkyaffs2_image_objs, mkyaffs2_image_pages);
 	}
 	else {
-		MKYAFFS2_ERROR("operation incomplete,\n"
+		MKYAFFS2_ERROR("\noperation incomplete,\n"
 			       "image may be broken!!!\n");
 	}
 

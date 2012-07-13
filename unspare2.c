@@ -64,10 +64,10 @@
 		UNSPARE2_PRINTF(s, ##args)
 
 #define UNSPARE2_WARN(s, args...) \
-		UNSPARE2_ERROR_PRINTF("warning: " s, ##args)
+		UNSPARE2_ERROR_PRINTF(s, ##args)
 
 #define UNSPARE2_ERROR(s, args...) \
-		UNSPARE2_ERROR_PRINTF("error: " s, ##args)
+		UNSPARE2_ERROR_PRINTF(s, ##args)
 
 #ifdef _UNSPARE2_DEBUG
 #define UNSPARE2_DEBUG(s, args...) \
