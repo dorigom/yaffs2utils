@@ -161,13 +161,15 @@ static int mkyaffs2_image_fd = -1;
 static char mkyaffs2_curfile[PATH_MAX + PATH_MAX] = {0};
 
 static nand_ecclayout_t *mkyaffs2_oobinfo = NULL;
-static int (*mkyaffs2_writechunk)(unsigned, unsigned, unsigned) = NULL;
 
 static unsigned mkyaffs2_bufsize = 0;
 static unsigned char *mkyaffs2_databuf = NULL;
 
 static struct mkyaffs2_fstree mkyaffs2_objtree = {0};
 static struct list_head mkyaffs2_objtable[MKYAFFS2_OBJTABLE_SIZE];
+
+static ssize_t
+(*mkyaffs2_assemble_ptags) (unsigned char *, struct yaffs_ext_tags *) = NULL;
 
 /*----------------------------------------------------------------------------*/
 
@@ -356,7 +358,7 @@ mkyaffs2_packedtags1_ecc (struct yaffs_packed_tags1 *pt)
 }
 
 static ssize_t
-mkyaffs2_tag2spare (unsigned char *spare, unsigned char *tag, size_t bytes)
+mkyaffs2_ptags2spare (unsigned char *spare, unsigned char *tag, size_t bytes)
 {
 	unsigned i;
 	size_t copied = 0;
@@ -380,95 +382,79 @@ mkyaffs2_tag2spare (unsigned char *spare, unsigned char *tag, size_t bytes)
 
 /*----------------------------------------------------------------------------*/
 
-static int 
-mkyaffs2_yaffs1_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
+static ssize_t
+mkyaffs2_assemble_ptags1(unsigned char *pt, struct yaffs_ext_tags *t)
 {
-	ssize_t written;
-	struct yaffs_ext_tags tag;
-	struct yaffs_packed_tags1 pt;
-	unsigned char *spare = mkyaffs2_databuf + mkyaffs2_chunksize;
+	struct yaffs_packed_tags1 *pt1 = (struct yaffs_packed_tags1 *)pt;
 
-	/* prepare the spare (oob) first */
-	memset(&tag, 0, sizeof(struct yaffs_ext_tags));
-
-	tag.chunk_id = chunk_id;
-	tag.serial_number = 1;	// double check
-	tag.n_bytes = bytes;
-	tag.obj_id = obj_id;
-	tag.is_deleted = 0;	// double check
-
-	memset(&pt, 0xff, sizeof(struct yaffs_packed_tags1));
-	yaffs_pack_tags1(&pt, &tag);
+	memset(pt1, 0xff, sizeof(struct yaffs_packed_tags1));
+	yaffs_pack_tags1(pt1, t);
 
 	if (MKYAFFS2_ISENDIAN)
-		packedtags1_endian_convert(&pt, 0);
+		packedtags1_endian_convert(pt1, 0);
 
 #ifndef YAFFS_IGNORE_TAGS_ECC
-	mkyaffs2_packedtags1_ecc(&pt);
+	mkyaffs2_packedtags1_ecc(pt1);
 #endif
 
-	/* write the spare (oob) into the buffer */
-	memset(spare, 0xff, mkyaffs2_sparesize);
-	written = mkyaffs2_tag2spare(spare, (unsigned char *)&pt,
-				     sizeof(struct yaffs_packed_tags1));
-	if (written != sizeof(struct yaffs_packed_tags1)) {
-		MKYAFFS2_DEBUG("tag to spare failed for obj %u chunk %u",
-				obj_id, chunk_id);
-		return -1;
-	}
+	return sizeof(struct yaffs_packed_tags1) -
+	       sizeof(((struct yaffs_packed_tags1 *)0)->should_be_ff);
+}
 
-	/* write a whole "chunk + spare" back to the image */
-	written = safe_write(mkyaffs2_image_fd, 
-			     mkyaffs2_databuf, mkyaffs2_bufsize);
-	if (written != mkyaffs2_bufsize) {
-		MKYAFFS2_DEBUG("write chunk failed for obj %u chunk %u: %s",
-				obj_id, chunk_id, strerror(errno));
-		return -1;
-	}
+static ssize_t
+mkyaffs2_assemble_ptags2(unsigned char *pt, struct yaffs_ext_tags *t)
+{
+	struct yaffs_packed_tags2 *pt2 = (struct yaffs_packed_tags2 *)pt;
 
-	mkyaffs2_image_pages++;
+	memset(pt2, 0xff, sizeof(struct yaffs_packed_tags2));
+	yaffs_pack_tags2_tags_only(&pt2->t, t);
 
-	return 0;
+	if (MKYAFFS2_ISENDIAN)
+		packedtags2_tagspart_endian_convert(pt2);
+
+#ifndef YAFFS_IGNORE_TAGS_ECC
+	yaffs_ecc_calc_other((unsigned char *)&pt2->t,
+			     sizeof(struct yaffs_packed_tags2_tags_only),
+			     &pt2->ecc);
+	if (MKYAFFS2_ISENDIAN)
+		packedtags2_eccother_endian_convert(pt2);
+#endif
+
+	return sizeof(struct yaffs_packed_tags2);
 }
 
 static int
-mkyaffs2_yaffs2_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
+mkyaffs2_write_chunk (unsigned obj_id, unsigned chunk_id, unsigned bytes)
 {
-	ssize_t written;
+	ssize_t written, pt_size;
+	unsigned char *spare = mkyaffs2_databuf + mkyaffs2_chunksize;
+
 	struct yaffs_ext_tags tag;
 	struct yaffs_packed_tags2 pt;
-	unsigned char *spare = mkyaffs2_databuf + mkyaffs2_chunksize;
 
 	/* prepare the spare (oob) first */
 	memset(&tag, 0, sizeof(struct yaffs_ext_tags));
-	
-	tag.chunk_id = chunk_id;
-	tag.serial_number = 1;	// double check
-	tag.n_bytes = bytes;
+
+	/* common */
 	tag.obj_id = obj_id;
+	tag.chunk_id = chunk_id;
+	tag.n_bytes = bytes;
+
+	/* yaffs1 only */
+	tag.is_deleted = 0;
+	tag.serial_number = 1;
+
+	/* yaffs2 only */
 	tag.chunk_used = 1;
 	tag.seq_number = YAFFS_LOWEST_SEQUENCE_NUMBER;
 
-	memset(&pt, 0xff, sizeof(struct yaffs_packed_tags2));
-	yaffs_pack_tags2_tags_only(&pt.t, &tag);
-
-	if (MKYAFFS2_ISENDIAN)
-		packedtags2_tagspart_endian_convert(&pt);
-
-#ifndef YAFFS_IGNORE_TAGS_ECC
-	yaffs_ecc_calc_other((unsigned char *)&pt.t,
-				sizeof(struct yaffs_packed_tags2_tags_only),
-				&pt.ecc);
-	if (MKYAFFS2_ISENDIAN)
-		packedtags2_eccother_endian_convert(&pt);
-#endif
+	pt_size = mkyaffs2_assemble_ptags((unsigned char *)&pt, &tag);
 
 	/* write the spare (oob) into the buffer */
 	memset(spare, 0xff, mkyaffs2_sparesize);
-	written = mkyaffs2_tag2spare(spare, (unsigned char *)&pt,
-				     sizeof(struct yaffs_packed_tags2));
-	if (written != sizeof(struct yaffs_packed_tags2)) {
-		MKYAFFS2_DEBUG("tag to spare failed for obj %u chunk %u",
+	written = mkyaffs2_ptags2spare(spare, (unsigned char *)&pt, pt_size);
+	if (written != pt_size) {
+		MKYAFFS2_DEBUG("tag to spare failed for obj %u chunk %u\n",
 				obj_id, chunk_id);
 		return -1;
 	}
@@ -477,7 +463,7 @@ mkyaffs2_yaffs2_writechunk (unsigned bytes, unsigned obj_id, unsigned chunk_id)
 	written = safe_write(mkyaffs2_image_fd,
 			     mkyaffs2_databuf, mkyaffs2_bufsize);
 	if (written != mkyaffs2_bufsize) {
-		MKYAFFS2_DEBUG("write chunk failed for obj %u chunk %u: %s",
+		MKYAFFS2_DEBUG("write chunk failed for obj %u chunk %u: %s\n",
 				obj_id, chunk_id, strerror(errno));
 		return -1;
 	}
@@ -498,7 +484,7 @@ mkyaffs2_write_oh (struct yaffs_obj_hdr *oh, struct mkyaffs2_obj *obj)
 	memcpy(mkyaffs2_databuf, oh, sizeof(struct yaffs_obj_hdr));
 
 	/* write buffer */
-	return mkyaffs2_writechunk(0xffff, obj->obj_id, 0);
+	return mkyaffs2_write_chunk(obj->obj_id, 0, 0xffff);
 }
 
 static int 
@@ -525,7 +511,7 @@ mkyaffs2_write_regfile (const char *fpath, struct mkyaffs2_obj *obj)
 		}
 
 		/* write buffer */
-		retval = mkyaffs2_writechunk(bytes, obj->obj_id, ++chunk);
+		retval = mkyaffs2_write_chunk(obj->obj_id, ++chunk, bytes);
 		if (retval) {
 			MKYAFFS2_DEBUG("error while writing file '%s': %s\n",
 					fpath, strerror(errno));
@@ -736,7 +722,7 @@ write_obj:
 }
 
 static int
-mkyaffs2_write_objtree (struct mkyaffs2_obj *obj)
+mkyaffs2_assemble_objtree (struct mkyaffs2_obj *obj)
 {
 	int retval = 0;
 	struct stat s;
@@ -810,7 +796,7 @@ next:
 		if (obj->type == YAFFS_OBJECT_TYPE_DIRECTORY) {
 			list_for_each(p, &obj->children) {
 				child = list_entry(p, mkyaffs2_obj_t, siblings);
-				retval = mkyaffs2_write_objtree(child);
+				retval = mkyaffs2_assemble_objtree(child);
 				if (retval)
 					break;
 			}
@@ -916,7 +902,7 @@ mkyaffs2_create_image (const char *dirpath, const char *imgfile)
 	MKYAFFS2_PROGRESS_INIT();
 
 	snprintf(mkyaffs2_curfile, PATH_MAX, "%s", dirpath);
-	retval = mkyaffs2_write_objtree(mkyaffs2_objtree.root);
+	retval = mkyaffs2_assemble_objtree(mkyaffs2_objtree.root);
 
 free_and_out:
 	if (mkyaffs2_image_fd >= 0)
@@ -1022,13 +1008,13 @@ main (int argc, char *argv[])
 	}
 
 	/* veridate the page size */
-	mkyaffs2_writechunk = &mkyaffs2_yaffs2_writechunk;
+	mkyaffs2_assemble_ptags = &mkyaffs2_assemble_ptags2;
 	switch (mkyaffs2_chunksize) {
 	case 512:
-		mkyaffs2_writechunk = &mkyaffs2_yaffs1_writechunk;
+		mkyaffs2_flags |= MKYAFFS2_FLAGS_YAFFS1;
+		mkyaffs2_assemble_ptags = &mkyaffs2_assemble_ptags1;
 		if (oobfile == NULL)
 			mkyaffs2_oobinfo = &nand_oob_16;
-		mkyaffs2_flags |= MKYAFFS2_FLAGS_YAFFS1;
 		break;
 	case 2048:
 		if (oobfile == NULL)
