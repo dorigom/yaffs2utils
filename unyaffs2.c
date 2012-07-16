@@ -188,8 +188,8 @@ typedef struct unyaffs2_fstree {
 
 typedef struct unyaffs2_specfile {
 	char *path;			/* file path */
-	struct list_head list;		/* specified files list */
 	struct unyaffs2_obj *obj;	/* object */
+	struct list_head list;		/* specified files list */
 } unyaffs2_specfile_t;
 
 #ifdef _HAVE_MMAP
