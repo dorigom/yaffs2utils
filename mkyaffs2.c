@@ -959,6 +959,7 @@ main (int argc, char *argv[])
 		{"all-root",		no_argument,		0, '0'},
 		{"yaffs-ecclayout",	no_argument,		0, 'y'},
 		{"help", 		no_argument, 		0, 'h'},
+		{NULL,			no_argument,		0, '\0'},
 	};
 
 	mkyaffs2_chunksize = DEFAULT_CHUNKSIZE;

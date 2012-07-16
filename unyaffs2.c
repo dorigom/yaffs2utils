@@ -1596,6 +1596,7 @@ main (int argc, char* argv[])
 		{"verbose",		no_argument,	 	0, 'v'},
 		{"yaffs-ecclayout",	no_argument,	 	0, 'y'},
 		{"help",		no_argument, 		0, 'h'},
+		{NULL,			no_argument,		0, '\0'},
 	};
 
 	unyaffs2_chunksize = DEFAULT_CHUNKSIZE;

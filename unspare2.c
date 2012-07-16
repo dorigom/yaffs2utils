@@ -165,7 +165,7 @@ unspare2_helper (void)
 /*----------------------------------------------------------------------------*/
 
 int
-main (int argc, char **argv)
+main (int argc, char *argv[])
 {
 	int retval;
 	char *devpath, *imgpath;
@@ -175,6 +175,7 @@ main (int argc, char **argv)
 	static const struct option long_options[] = {
 		{"help",	no_argument,	0, 'h'},
 		{"endian",	no_argument,	0, 'e'},
+		{NULL,		no_argument,	0, '\0'},
 	};
 
 	while ((option = getopt_long(argc, argv, short_options,
