@@ -160,7 +160,7 @@ static int mkyaffs2_image_fd = -1;
 
 static char mkyaffs2_curfile[PATH_MAX + PATH_MAX] = {0};
 
-static nand_ecclayout_t *mkyaffs2_oobinfo = NULL;
+static nand_ecclayout_t *mkyaffs2_ecclayout = NULL;
 
 static unsigned mkyaffs2_bufsize = 0;
 static unsigned char *mkyaffs2_databuf = NULL;
@@ -362,7 +362,7 @@ mkyaffs2_ptags2spare (unsigned char *spare, unsigned char *tag, size_t bytes)
 {
 	unsigned i;
 	size_t copied = 0;
-	struct nand_oobfree *oobfree = mkyaffs2_oobinfo->oobfree;
+	struct nand_oobfree *oobfree = mkyaffs2_ecclayout->oobfree;
 
 	for (i = 0; i < MTD_MAX_OOBFREE_ENTRIES && copied < bytes; i++) {
 		size_t size = bytes - copied;
@@ -1015,20 +1015,21 @@ main (int argc, char *argv[])
 		mkyaffs2_flags |= MKYAFFS2_FLAGS_YAFFS1;
 		mkyaffs2_assemble_ptags = &mkyaffs2_assemble_ptags1;
 		if (oobfile == NULL)
-			mkyaffs2_oobinfo = &nand_oob_16;
+			mkyaffs2_ecclayout = &nand_oob_16;
 		break;
 	case 2048:
 		if (oobfile == NULL)
-			mkyaffs2_oobinfo = MKYAFFS2_ISYAFFSECC ?
-					   &yaffs_nand_oob_64 : &nand_oob_64;
+			mkyaffs2_ecclayout = MKYAFFS2_ISYAFFSECC ?
+					     &yaffs_nand_oob_64 : &nand_oob_64;
 		break;
 	case 4096:
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384 bytes */
 		if (oobfile == NULL)
-			mkyaffs2_oobinfo = MKYAFFS2_ISYAFFSECC ?
-					   &yaffs_nand_oob_128 : &nand_oob_128;
+			mkyaffs2_ecclayout = MKYAFFS2_ISYAFFSECC ?
+					     &yaffs_nand_oob_128 :
+					     &nand_oob_128;
 		break;
 	default:
 		MKYAFFS2_ERROR("%u bytes page size is NOT supported.\n",
@@ -1052,7 +1053,7 @@ main (int argc, char *argv[])
 			MKYAFFS2_ERROR("read oob image failed\n");
 			return -1;
 		}
-		mkyaffs2_oobinfo = &nand_oob_user;
+		mkyaffs2_ecclayout = &nand_oob_user;
 		/* FIXME: verify for the various ecc layout */
 	}
 

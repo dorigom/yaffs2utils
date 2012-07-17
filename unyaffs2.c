@@ -218,7 +218,7 @@ static char unyaffs2_linkfile[PATH_MAX + PATH_MAX] = {0};
 
 static LIST_HEAD(unyaffs2_specfile_list);	/* specfied files */
 
-static nand_ecclayout_t *unyaffs2_oobinfo = NULL;
+static nand_ecclayout_t *unyaffs2_ecclayout = NULL;
 
 static struct unyaffs2_fstree unyaffs2_objtree = {0};
 static struct list_head unyaffs2_objtable[UNYAFFS2_OBJTABLE_SIZE];
@@ -522,7 +522,7 @@ unyaffs2_spare2ptags (unsigned char *tag, unsigned char *spare, size_t bytes)
 {
 	unsigned i;
 	size_t copied = 0;
-	struct nand_oobfree *oobfree = unyaffs2_oobinfo->oobfree;
+	struct nand_oobfree *oobfree = unyaffs2_ecclayout->oobfree;
 
 	for (i = 0; i < 8 && copied < bytes; i++) {
 		size_t size = bytes - copied;
@@ -1659,20 +1659,21 @@ main (int argc, char* argv[])
 		unyaffs2_flags |= UNYAFFS2_FLAGS_YAFFS1;
 		unyaffs2_extract_ptags = &unyaffs2_extract_ptags1;
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = &nand_oob_16;
+			unyaffs2_ecclayout = &nand_oob_16;
 		break;
 	case 2048:
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = UNYAFFS2_ISYAFFSECC ?
-					   &yaffs_nand_oob_64 : &nand_oob_64;
+			unyaffs2_ecclayout = UNYAFFS2_ISYAFFSECC ?
+					     &yaffs_nand_oob_64 : &nand_oob_64;
 		break;
 	case 4096:
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384. */
 		if (oobfile == NULL)
-			unyaffs2_oobinfo = UNYAFFS2_ISYAFFSECC ?
-					   &yaffs_nand_oob_128 : &nand_oob_128;
+			unyaffs2_ecclayout = UNYAFFS2_ISYAFFSECC ?
+					     &yaffs_nand_oob_128 :
+					     &nand_oob_128;
 		break;
 	default:
 		UNYAFFS2_ERROR("%u bytes page size is not supported.\n",
@@ -1695,7 +1696,7 @@ main (int argc, char* argv[])
 			UNYAFFS2_ERROR("read oob image failed.\n");
 			return -1;
 		}
-		unyaffs2_oobinfo = &nand_oob_user;
+		unyaffs2_ecclayout = &nand_oob_user;
 		/* FIXME: verify for the various ecc layout */
 	}
 
