@@ -561,6 +561,7 @@ static int
 unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 {
 	int result;
+	enum yaffs_ecc_result ecc_result = YAFFS_ECC_RESULT_NO_ERROR;
 	struct yaffs_ecc_other ecc;
 	struct yaffs_packed_tags2 pt2;
 
@@ -584,10 +585,26 @@ unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 	if (result < 0)
 		return -1;
 
+	switch (result) {
+	case 0:
+		ecc_result = YAFFS_ECC_RESULT_NO_ERROR;
+		break;
+	case 1:
+		ecc_result = YAFFS_ECC_RESULT_FIXED;
+		break;
+	case -1:
+		ecc_result = YAFFS_ECC_RESULT_UNFIXED;
+		break;
+	default:
+		ecc_result = YAFFS_ECC_RESULT_UNKNOWN;
+	}
+
 	if (UNYAFFS2_ISENDIAN)
 		packedtags2_tagspart_endian_convert(&pt2);
 
 	yaffs_unpack_tags2_tags_only(t, &pt2.t);
+
+	t->ecc_result = ecc_result;
 
 	return 0;
 }
