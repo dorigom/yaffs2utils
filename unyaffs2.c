@@ -825,6 +825,8 @@ unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
 		obj->obj_id = tag.obj_id;
 		obj->hdr_off = offset;
 		obj->valid = 1;
+
+		unyaffs2_image_objs++;
 	}
 	else if (tag.chunk_id == 1) {
 	/* the first data chunk of a object */
@@ -837,8 +839,6 @@ unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
 
 		obj->type = YAFFS_OBJECT_TYPE_FILE;
 		obj->variant.file.file_head = offset;
-
-		unyaffs2_image_objs++;
 	}
 
 	return 0;
