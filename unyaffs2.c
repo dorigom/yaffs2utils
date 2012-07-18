@@ -803,7 +803,7 @@ unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
 	if (tag.obj_id <= YAFFS_OBJECTID_DELETED ||
 	    tag.obj_id == YAFFS_OBJECTID_SUMMARY ||
 	    !tag.chunk_used) {
-		UNYAFFS2_DEBUG("empty page skipped\n");
+		UNYAFFS2_DEBUG("unused page skipped @ offset %lu\n", offset);
 		return 0;
 	}
 
@@ -999,15 +999,15 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, const char *fpath,
 
 	struct yaffs_ext_tags tag;
 
-	if (fsize == 0)
-		return creat(fpath, obj->mode);
-
 	outfd = open(fpath, O_RDWR | O_CREAT | O_TRUNC, obj->mode);
 	if (outfd < 0) {
 		UNYAFFS2_DEBUG("cannot create file '%s'; %s\n",
 				fpath, strerror(errno));
 		return -1;
 	}
+
+	if (fsize == 0)
+		goto out;
 
 	/* stretch the file */
 	if (lseek(outfd, fsize - 1, SEEK_SET) < 0 ||
