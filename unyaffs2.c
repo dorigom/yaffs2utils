@@ -227,7 +227,7 @@ static struct list_head unyaffs2_objtable[UNYAFFS2_OBJTABLE_SIZE];
 static struct unyaffs2_mmap unyaffs2_mmapinfo = {0};
 #endif
 
-static void
+static int
 (*unyaffs2_extract_ptags) (struct yaffs_ext_tags *, unsigned char *) = NULL;
 
 /*----------------------------------------------------------------------------*/
@@ -540,7 +540,7 @@ unyaffs2_spare2ptags (unsigned char *tag, unsigned char *spare, size_t bytes)
 	return copied;
 }
 
-static void
+static int
 unyaffs2_extract_ptags1 (struct yaffs_ext_tags *t, unsigned char *pt)
 {
 	struct yaffs_packed_tags1 pt1;
@@ -553,9 +553,11 @@ unyaffs2_extract_ptags1 (struct yaffs_ext_tags *t, unsigned char *pt)
 		packedtags1_endian_convert(&pt1, 1);
 
 	yaffs_unpack_tags1(t, &pt1);
+
+	return 0;
 }
 
-static void
+static int
 unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 {
 	int result;
@@ -565,6 +567,9 @@ unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 	memset(&pt2, 0xff, sizeof(struct yaffs_packed_tags2));
 	unyaffs2_spare2ptags((unsigned char *)&pt2, s,
 			     sizeof(struct yaffs_packed_tags2));
+
+	if (pt2.t.seq_number == 0xffffffff)
+		return -1;
 
 	if (UNYAFFS2_ISENDIAN)
 		packedtags2_eccother_endian_convert(&pt2);
@@ -576,15 +581,15 @@ unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 				sizeof(struct yaffs_packed_tags2_tags_only),
 				&pt2.ecc, &ecc);
 
-	if (result < 0) {
-		memset(t, 0xff, sizeof(struct yaffs_ext_tags));
-		return;
-	}
+	if (result < 0)
+		return -1;
 
 	if (UNYAFFS2_ISENDIAN)
 		packedtags2_tagspart_endian_convert(&pt2);
 
 	yaffs_unpack_tags2_tags_only(t, &pt2.t);
+
+	return 0;
 }
 
 static inline int
@@ -619,6 +624,7 @@ unyaffs2_oh2obj (struct unyaffs2_obj *obj, struct yaffs_obj_hdr *oh)
 	case YAFFS_OBJECT_TYPE_FILE:
 		obj->type = YAFFS_OBJECT_TYPE_FILE;
 		obj->variant.file.file_size = unyaffs2_extract_oh_size(oh);
+		obj->variant.file.file_head = ~(off_t)0;
 		break;
 	case YAFFS_OBJECT_TYPE_SYMLINK:
 		obj->type = YAFFS_OBJECT_TYPE_SYMLINK;
@@ -814,12 +820,15 @@ unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
 	struct yaffs_ext_tags tag;
 	struct unyaffs2_obj *obj;
 
-	unyaffs2_extract_ptags(&tag, buffer + unyaffs2_chunksize);
+	if (unyaffs2_extract_ptags(&tag, buffer + unyaffs2_chunksize)) {
+		UNYAFFS2_DEBUG("invalid page skipped @ offset %lu\n", offset);
+		return 0;
+	}
 
 	/* empty page? */
 	if (tag.obj_id <= YAFFS_OBJECTID_DELETED ||
 	    tag.obj_id == YAFFS_OBJECTID_SUMMARY ||
-	    tag.chunk_used == 0 || tag.seq_number == 0xffffffff) {
+	    tag.chunk_used == 0) {
 		UNYAFFS2_DEBUG("unused page skipped @ offset %lu\n", offset);
 		return 0;
 	}
@@ -1043,6 +1052,11 @@ unyaffs2_extract_file_mmap (unsigned char *addr, size_t size, const char *fpath,
 		goto out;
 	}
 
+	if (obj->variant.file.file_head == ~(off_t)0) {
+		UNYAFFS2_DEBUG("invalid head offset of file  '%s'\n", fpath);
+		goto out;
+	}
+
 	addr += obj->variant.file.file_head;
 	curaddr = outaddr;
 	remains = fsize;
@@ -1088,6 +1102,11 @@ unyaffs2_extract_file (const int fd, const char *fpath,
 		UNYAFFS2_DEBUG("cannot create file '%s': %s\n",
 				fpath, strerror(errno));
 		return -1;
+	}
+
+	if (obj->variant.file.file_head == ~(off_t)0) {
+		UNYAFFS2_DEBUG("invalid head offset of file  '%s'\n", fpath);
+		goto out;
 	}
 
 	lseek(fd, obj->variant.file.file_head, SEEK_SET);
@@ -1331,11 +1350,12 @@ unyaffs2_extract_objtree (struct unyaffs2_obj *obj)
 	if (UNYAFFS2_ISENDIAN)
 		oh_endian_convert(&oh);
 
-	unyaffs2_extract_ptags(&tag,
-			       unyaffs2_databuf + unyaffs2_chunksize);
+	retval = unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize) ||
+		 unyaffs2_extract_ptags(&tag,
+					unyaffs2_databuf + unyaffs2_chunksize);
 
-	if (unyaffs2_isempty(unyaffs2_databuf, unyaffs2_bufsize) ||
-	    !tag.chunk_used || tag.chunk_id != 0 || tag.obj_id != obj->obj_id ||
+	if (retval || !tag.chunk_used || tag.chunk_id != 0 ||
+	    tag.obj_id != obj->obj_id ||
 	    oh.parent_obj_id != obj->parent_id) {
 		/* parse image failed */
 		UNYAFFS2_DEBUG("image corrupted @ offset %lu "
