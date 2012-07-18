@@ -556,13 +556,30 @@ unyaffs2_extract_ptags1 (struct yaffs_ext_tags *t, unsigned char *pt)
 }
 
 static void
-unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *pt)
+unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 {
+	int result;
+	struct yaffs_ecc_other ecc;
 	struct yaffs_packed_tags2 pt2;
 
 	memset(&pt2, 0xff, sizeof(struct yaffs_packed_tags2));
-	unyaffs2_spare2ptags((unsigned char *)&pt2, pt,
+	unyaffs2_spare2ptags((unsigned char *)&pt2, s,
 			     sizeof(struct yaffs_packed_tags2));
+
+	if (UNYAFFS2_ISENDIAN)
+		packedtags2_eccother_endian_convert(&pt2);
+
+	yaffs_ecc_calc_other((unsigned char *)&pt2.t,
+			     sizeof(struct yaffs_packed_tags2_tags_only), &ecc);
+
+	result = yaffs_ecc_correct_other((unsigned char *)&pt2.t,
+				sizeof(struct yaffs_packed_tags2_tags_only),
+				&pt2.ecc, &ecc);
+
+	if (result < 0) {
+		memset(t, 0xff, sizeof(struct yaffs_ext_tags));
+		return;
+	}
 
 	if (UNYAFFS2_ISENDIAN)
 		packedtags2_tagspart_endian_convert(&pt2);
@@ -802,7 +819,7 @@ unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
 	/* empty page? */
 	if (tag.obj_id <= YAFFS_OBJECTID_DELETED ||
 	    tag.obj_id == YAFFS_OBJECTID_SUMMARY ||
-	    !tag.chunk_used) {
+	    tag.chunk_used == 0 || tag.seq_number == 0xffffffff) {
 		UNYAFFS2_DEBUG("unused page skipped @ offset %lu\n", offset);
 		return 0;
 	}

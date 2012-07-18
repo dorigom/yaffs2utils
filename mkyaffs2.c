@@ -393,9 +393,7 @@ mkyaffs2_assemble_ptags1(unsigned char *pt, struct yaffs_ext_tags *t)
 	if (MKYAFFS2_ISENDIAN)
 		packedtags1_endian_convert(pt1, 0);
 
-#ifndef YAFFS_IGNORE_TAGS_ECC
 	mkyaffs2_packedtags1_ecc(pt1);
-#endif
 
 	return sizeof(struct yaffs_packed_tags1) -
 	       sizeof(((struct yaffs_packed_tags1 *)0)->should_be_ff);
@@ -412,13 +410,11 @@ mkyaffs2_assemble_ptags2(unsigned char *pt, struct yaffs_ext_tags *t)
 	if (MKYAFFS2_ISENDIAN)
 		packedtags2_tagspart_endian_convert(pt2);
 
-#ifndef YAFFS_IGNORE_TAGS_ECC
 	yaffs_ecc_calc_other((unsigned char *)&pt2->t,
 			     sizeof(struct yaffs_packed_tags2_tags_only),
 			     &pt2->ecc);
 	if (MKYAFFS2_ISENDIAN)
 		packedtags2_eccother_endian_convert(pt2);
-#endif
 
 	return sizeof(struct yaffs_packed_tags2);
 }
