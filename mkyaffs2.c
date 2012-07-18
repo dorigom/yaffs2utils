@@ -358,11 +358,12 @@ mkyaffs2_packedtags1_ecc (struct yaffs_packed_tags1 *pt)
 }
 
 static ssize_t
-mkyaffs2_ptags2spare (unsigned char *spare, unsigned char *tag, size_t bytes)
+mkyaffs2_ptags2spare (unsigned char *spare, unsigned char *tag, size_t bytes,
+		      nand_ecclayout_t *ecclayout)
 {
 	unsigned i;
 	size_t copied = 0;
-	struct nand_oobfree *oobfree = mkyaffs2_ecclayout->oobfree;
+	struct nand_oobfree *oobfree = ecclayout->oobfree;
 
 	for (i = 0; i < MTD_MAX_OOBFREE_ENTRIES && copied < bytes; i++) {
 		size_t size = bytes - copied;
@@ -448,7 +449,8 @@ mkyaffs2_write_chunk (unsigned obj_id, unsigned chunk_id, unsigned bytes)
 
 	/* write the spare (oob) into the buffer */
 	memset(spare, 0xff, mkyaffs2_sparesize);
-	written = mkyaffs2_ptags2spare(spare, (unsigned char *)&pt, pt_size);
+	written = mkyaffs2_ptags2spare(spare, (unsigned char *)&pt, pt_size,
+				       mkyaffs2_ecclayout);
 	if (written != pt_size) {
 		MKYAFFS2_DEBUG("tag to spare failed for obj %u chunk %u\n",
 				obj_id, chunk_id);

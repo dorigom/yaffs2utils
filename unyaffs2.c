@@ -518,11 +518,12 @@ unyaffs2_prefix_basestr(const char *path, const char *prefix)
 /*----------------------------------------------------------------------------*/
 
 static size_t
-unyaffs2_spare2ptags (unsigned char *tag, unsigned char *spare, size_t bytes)
+unyaffs2_spare2ptags (unsigned char *tag, unsigned char *spare, size_t bytes,
+		      nand_ecclayout_t *ecclayout)
 {
 	unsigned i;
 	size_t copied = 0;
-	struct nand_oobfree *oobfree = unyaffs2_ecclayout->oobfree;
+	struct nand_oobfree *oobfree = ecclayout->oobfree;
 
 	for (i = 0; i < 8 && copied < bytes; i++) {
 		size_t size = bytes - copied;
@@ -547,7 +548,8 @@ unyaffs2_extract_ptags1 (struct yaffs_ext_tags *t, unsigned char *pt)
 
 	memset(&pt1, 0xff, sizeof(struct yaffs_packed_tags1));
 	unyaffs2_spare2ptags((unsigned char *)&pt1, pt,
-			     sizeof(struct yaffs_packed_tags1));
+			     sizeof(struct yaffs_packed_tags1),
+			     unyaffs2_ecclayout);
 
 	if (UNYAFFS2_ISENDIAN)
 		packedtags1_endian_convert(&pt1, 1);
@@ -567,7 +569,8 @@ unyaffs2_extract_ptags2 (struct yaffs_ext_tags *t, unsigned char *s)
 
 	memset(&pt2, 0xff, sizeof(struct yaffs_packed_tags2));
 	unyaffs2_spare2ptags((unsigned char *)&pt2, s,
-			     sizeof(struct yaffs_packed_tags2));
+			     sizeof(struct yaffs_packed_tags2),
+			     unyaffs2_ecclayout);
 
 	if (pt2.t.seq_number == 0xffffffff)
 		return -1;
