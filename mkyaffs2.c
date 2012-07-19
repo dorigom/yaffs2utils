@@ -168,8 +168,8 @@ static unsigned char *mkyaffs2_databuf = NULL;
 static struct mkyaffs2_fstree mkyaffs2_objtree = {0};
 static struct list_head mkyaffs2_objtable[MKYAFFS2_OBJTABLE_SIZE];
 
-static ssize_t
-(*mkyaffs2_assemble_ptags) (unsigned char *, struct yaffs_ext_tags *) = NULL;
+static ssize_t 
+(*mkyaffs2_assemble_ptags) (unsigned char *, struct yaffs_ext_tags *, int) = 0;
 
 /*----------------------------------------------------------------------------*/
 
@@ -384,7 +384,7 @@ mkyaffs2_ptags2spare (unsigned char *spare, unsigned char *tag, size_t bytes,
 /*----------------------------------------------------------------------------*/
 
 static ssize_t
-mkyaffs2_assemble_ptags1(unsigned char *pt, struct yaffs_ext_tags *t)
+mkyaffs2_assemble_ptags1(unsigned char *pt, struct yaffs_ext_tags *t, int ecc)
 {
 	struct yaffs_packed_tags1 *pt1 = (struct yaffs_packed_tags1 *)pt;
 
@@ -401,7 +401,7 @@ mkyaffs2_assemble_ptags1(unsigned char *pt, struct yaffs_ext_tags *t)
 }
 
 static ssize_t
-mkyaffs2_assemble_ptags2(unsigned char *pt, struct yaffs_ext_tags *t)
+mkyaffs2_assemble_ptags2(unsigned char *pt, struct yaffs_ext_tags *t, int ecc)
 {
 	struct yaffs_packed_tags2 *pt2 = (struct yaffs_packed_tags2 *)pt;
 
@@ -411,11 +411,14 @@ mkyaffs2_assemble_ptags2(unsigned char *pt, struct yaffs_ext_tags *t)
 	if (MKYAFFS2_ISENDIAN)
 		packedtags2_tagspart_endian_convert(pt2);
 
-	yaffs_ecc_calc_other((unsigned char *)&pt2->t,
-			     sizeof(struct yaffs_packed_tags2_tags_only),
-			     &pt2->ecc);
-	if (MKYAFFS2_ISENDIAN)
-		packedtags2_eccother_endian_convert(pt2);
+	if (ecc) {
+		yaffs_ecc_calc_other((unsigned char *)&pt2->t,
+				     sizeof(struct yaffs_packed_tags2_tags_only),
+				     &pt2->ecc);
+
+		if (MKYAFFS2_ISENDIAN)
+			packedtags2_eccother_endian_convert(pt2);
+	}
 
 	return sizeof(struct yaffs_packed_tags2);
 }
@@ -445,7 +448,7 @@ mkyaffs2_write_chunk (unsigned obj_id, unsigned chunk_id, unsigned bytes)
 	tag.chunk_used = 1;
 	tag.seq_number = YAFFS_LOWEST_SEQUENCE_NUMBER;
 
-	pt_size = mkyaffs2_assemble_ptags((unsigned char *)&pt, &tag);
+	pt_size = mkyaffs2_assemble_ptags((unsigned char *)&pt, &tag, 1);
 
 	/* write the spare (oob) into the buffer */
 	memset(spare, 0xff, mkyaffs2_sparesize);
