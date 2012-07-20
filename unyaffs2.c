@@ -859,6 +859,12 @@ unyaffs2_scan_chunk (unsigned char *buffer, off_t offset)
 			return -1;
 		}
 
+		if (obj->valid) {
+			UNYAFFS2_DEBUG("skip duplicated object %u\n",
+				       tag.obj_id);
+			return -1;
+		}
+
 		memcpy(&oh, unyaffs2_databuf, sizeof(struct yaffs_obj_hdr));
 		if (UNYAFFS2_ISENDIAN)
 			oh_endian_convert(&oh);
