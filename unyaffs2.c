@@ -1140,7 +1140,8 @@ unyaffs2_extract_file (const int fd, const char *fpath,
 		}
 
 		unyaffs2_extract_ptags(&tag,
-				unyaffs2_databuf + unyaffs2_chunksize, NULL, 0);
+				       unyaffs2_databuf + unyaffs2_chunksize,
+				       NULL, 0);
 
 		w = safe_write(outfd, unyaffs2_databuf, tag.n_bytes);
 		if (w != tag.n_bytes) {
