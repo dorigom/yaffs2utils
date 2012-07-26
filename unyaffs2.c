@@ -1714,6 +1714,17 @@ main (int argc, char* argv[])
 		UNYAFFS2_WARN("warning: non-root users.\n");
 	}
 
+	/* load spare image if it is existed */
+	unyaffs2_ecclayout = NULL;
+	if (oobfile) {
+		if (unyaffs2_load_spare(oobfile) < 0) {
+			UNYAFFS2_ERROR("read oob image failed.\n");
+			return -1;
+		}
+		unyaffs2_ecclayout = &nand_oob_user;
+		/* FIXME: verify for the various ecc layout */
+	}
+
 	/* validate the page size */
 	unyaffs2_extract_ptags = &unyaffs2_extract_ptags2;
 	switch (unyaffs2_chunksize) {
@@ -1724,7 +1735,7 @@ main (int argc, char* argv[])
 			unyaffs2_ecclayout = &nand_oob_16;
 		break;
 	case 2048:
-		if (oobfile == NULL)
+		if (unyaffs2_ecclayout == NULL)
 			unyaffs2_ecclayout = UNYAFFS2_ISYAFFSECC ?
 					     &yaffs_nand_oob_64 : &nand_oob_64;
 		break;
@@ -1732,7 +1743,7 @@ main (int argc, char* argv[])
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384. */
-		if (oobfile == NULL)
+		if (unyaffs2_ecclayout == NULL)
 			unyaffs2_ecclayout = UNYAFFS2_ISYAFFSECC ?
 					     &yaffs_nand_oob_128 :
 					     &nand_oob_128;
@@ -1751,15 +1762,6 @@ main (int argc, char* argv[])
 		UNYAFFS2_ERROR("spare size is too large (%u).\n",
 				unyaffs2_sparesize);
 		return -1;
-	}
-
-	if (oobfile) {
-		if (unyaffs2_load_spare(oobfile) < 0) {
-			UNYAFFS2_ERROR("read oob image failed.\n");
-			return -1;
-		}
-		unyaffs2_ecclayout = &nand_oob_user;
-		/* FIXME: verify for the various ecc layout */
 	}
 
 	retval = unyaffs2_extract_image(imgfile, dirpath);

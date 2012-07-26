@@ -1019,6 +1019,17 @@ main (int argc, char *argv[])
 		MKYAFFS2_WARN("warning: non-root users.\n");
 	}
 
+	/* load spare image if it is existed */
+	mkyaffs2_ecclayout = NULL;
+	if (oobfile) {
+		if (mkyaffs2_load_spare(oobfile) < 0) {
+			MKYAFFS2_ERROR("read oob image failed\n");
+			return -1;
+		}
+		mkyaffs2_ecclayout = &nand_oob_user;
+		/* FIXME: verify for the various ecc layout */
+	}
+
 	/* veridate the page size */
 	mkyaffs2_assemble_ptags = &mkyaffs2_assemble_ptags2;
 	switch (mkyaffs2_chunksize) {
@@ -1029,7 +1040,7 @@ main (int argc, char *argv[])
 			mkyaffs2_ecclayout = &nand_oob_16;
 		break;
 	case 2048:
-		if (oobfile == NULL)
+		if (mkyaffs2_ecclayout == NULL)
 			mkyaffs2_ecclayout = MKYAFFS2_ISYAFFSECC ?
 					     &yaffs_nand_oob_64 : &nand_oob_64;
 		break;
@@ -1037,7 +1048,7 @@ main (int argc, char *argv[])
 	case 8192:
 	case 16384:
 		/* FIXME: The OOB scheme for 8192 and 16384 bytes */
-		if (oobfile == NULL)
+		if (mkyaffs2_ecclayout == NULL)
 			mkyaffs2_ecclayout = MKYAFFS2_ISYAFFSECC ?
 					     &yaffs_nand_oob_128 :
 					     &nand_oob_128;
@@ -1056,16 +1067,6 @@ main (int argc, char *argv[])
 		MKYAFFS2_ERROR("spare size is too large (%u).\n",
 				mkyaffs2_sparesize);
 		return -1;
-	}
-
-	/* verify spare image if it is existed */
-	if (oobfile) {
-		if (mkyaffs2_load_spare(oobfile) < 0) {
-			MKYAFFS2_ERROR("read oob image failed\n");
-			return -1;
-		}
-		mkyaffs2_ecclayout = &nand_oob_user;
-		/* FIXME: verify for the various ecc layout */
 	}
 
 	/* verify whether the input directory is valid */
