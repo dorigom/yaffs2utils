@@ -640,7 +640,6 @@ unyaffs2_oh2obj (struct unyaffs2_obj *obj, struct yaffs_obj_hdr *oh)
 	case YAFFS_OBJECT_TYPE_FILE:
 		obj->type = YAFFS_OBJECT_TYPE_FILE;
 		obj->variant.file.file_size = unyaffs2_extract_oh_size(oh);
-		obj->variant.file.file_head = ~(off_t)0;
 		break;
 	case YAFFS_OBJECT_TYPE_SYMLINK:
 		obj->type = YAFFS_OBJECT_TYPE_SYMLINK;
